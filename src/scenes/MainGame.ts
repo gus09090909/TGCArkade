@@ -55,6 +55,8 @@ export class MainGame extends Phaser.Scene {
   private paddleCenterMul = 1;
   private paddleGun = false;
   private gunTimer?: Phaser.Time.TimerEvent;
+  /** One-shot revert to default width after grow/shrink power-up. */
+  private paddleSizeRevertTimer?: Phaser.Time.TimerEvent;
   private glue = false;
 
   private levelIndex = 0;
@@ -242,21 +244,31 @@ export class MainGame extends Phaser.Scene {
     this.physics.add.overlap(this.bulletGroup, this.blockGroup, this.onBulletBlock, undefined, this);
 
     let audioUnlocked = false;
+    const pointerWorldX = (p: Phaser.Input.Pointer) => {
+      let wx = p.worldX;
+      if (!Number.isFinite(wx)) {
+        const o = this.cameras.main.getWorldPoint(p.x, p.y);
+        wx = o.x;
+      }
+      return wx;
+    };
     const syncPointerToPaddle = (p: Phaser.Input.Pointer) => {
       if (this.pausedForUi || this.userPaused || this.overlayPausedPhysics) return;
-      const wx = this.cameras.main.getWorldPoint(p.x, p.y).x;
-      this.movePaddlePointer(wx);
+      if (this.cursors?.left?.isDown || this.cursors?.right?.isDown) return;
+      this.movePaddlePointer(pointerWorldX(p));
     };
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (!audioUnlocked) {
         this.sound.unlock();
         audioUnlocked = true;
       }
-      syncPointerToPaddle(p);
+      if (!this.pausedForUi && !this.userPaused && !this.overlayPausedPhysics) {
+        this.movePaddlePointer(pointerWorldX(p));
+      }
       this.releaseGluedBalls();
     });
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (p.isDown) syncPointerToPaddle(p);
+      syncPointerToPaddle(p);
     });
 
     this.loadLevel(this.levelIndex);
@@ -395,7 +407,7 @@ export class MainGame extends Phaser.Scene {
     const ch = this.textures.getFrame('pad-center').height;
     const baseCw = this.textures.getFrame('pad-center').width;
     const rw = this.textures.getFrame('pad-right').width;
-    const cw = Math.max(24, baseCw * this.paddleCenterMul);
+    const cw = Phaser.Math.Clamp(Math.round(baseCw * this.paddleCenterMul), 18, 220);
     const total = lw + cw + rw;
 
     if (!this.paddleRoot) {
@@ -551,6 +563,15 @@ export class MainGame extends Phaser.Scene {
       this.fireBullet(ball.x - 18, py);
       this.fireBullet(ball.x + 18, py);
     }
+  }
+
+  private schedulePaddleSizeRevert(delayMs: number) {
+    this.paddleSizeRevertTimer?.remove(false);
+    this.paddleSizeRevertTimer = this.time.delayedCall(delayMs, () => {
+      this.paddleCenterMul = 1;
+      this.buildPaddle(PADDLE_Y);
+      this.paddleSizeRevertTimer = undefined;
+    });
   }
 
   private movePaddlePointer(worldX: number) {
@@ -716,34 +737,20 @@ export class MainGame extends Phaser.Scene {
    * Arcade Y+ is down. Keep |v| ≈ ballSpeed and never leave the ball crawling horizontally
    * (old clamp pushed vy positive when vy was ~0, so it never climbed).
    */
-  private ensureBallSpeed(body: Phaser.Physics.Arcade.Body, ballY: number) {
+  /** Only rescale speed; keep direction (avoids ceiling / side-wall “crawl” bugs). */
+  private ensureBallSpeed(body: Phaser.Physics.Arcade.Body, _ballY: number) {
     const target = this.ballSpeed;
-    const minAbsVy = 72;
     let vx = body.velocity.x;
     let vy = body.velocity.y;
-    let sp = Math.hypot(vx, vy);
+    const sp = Math.hypot(vx, vy);
 
-    if (sp < 55) {
-      const a = -Math.PI / 2 + Phaser.Math.FloatBetween(-0.45, 0.45);
+    if (sp < 50) {
+      const a = -Math.PI / 2 + Phaser.Math.FloatBetween(-0.5, 0.5);
       body.setVelocity(Math.cos(a) * target, Math.sin(a) * target);
       return;
     }
 
-    vx = (vx / sp) * target;
-    vy = (vy / sp) * target;
-
-    if (Math.abs(vy) < minAbsVy) {
-      if (ballY > GAME_HEIGHT * 0.28) {
-        vy = -minAbsVy;
-      } else {
-        vy = (vy >= 0 ? 1 : -1) * minAbsVy;
-      }
-      sp = Math.hypot(vx, vy);
-      vx = (vx / sp) * target;
-      vy = (vy / sp) * target;
-    }
-
-    body.setVelocity(vx, vy);
+    body.setVelocity((vx / sp) * target, (vy / sp) * target);
   }
 
   private onBonusPaddle(obj1: Phaser.GameObjects.GameObject, obj2: Phaser.GameObjects.GameObject) {
@@ -803,17 +810,11 @@ export class MainGame extends Phaser.Scene {
     } else if (name === 'grow-paddle') {
       this.paddleCenterMul = Math.min(1.65, this.paddleCenterMul * 1.35);
       this.buildPaddle(PADDLE_Y);
-      this.time.delayedCall(15000, () => {
-        this.paddleCenterMul = 1;
-        this.buildPaddle(PADDLE_Y);
-      });
+      this.schedulePaddleSizeRevert(15000);
     } else if (name === 'shrink-paddle') {
       this.paddleCenterMul = Math.max(0.55, this.paddleCenterMul * 0.72);
       this.buildPaddle(PADDLE_Y);
-      this.time.delayedCall(15000, () => {
-        this.paddleCenterMul = 1;
-        this.buildPaddle(PADDLE_Y);
-      });
+      this.schedulePaddleSizeRevert(15000);
     } else if (name === 'score') {
       /* score already applied via def.score */
     } else if (name === 'small-ball') {
@@ -1213,10 +1214,13 @@ export class MainGame extends Phaser.Scene {
     if (this.pausedForUi) return;
     if (this.userPaused) return;
 
-    const ap = this.input.activePointer;
-    if (ap.isDown && !this.overlayPausedPhysics) {
-      const wx = this.cameras.main.getWorldPoint(ap.x, ap.y).x;
-      this.movePaddlePointer(wx);
+    if (!this.overlayPausedPhysics && !this.cursors?.left?.isDown && !this.cursors?.right?.isDown) {
+      const ap = this.input.activePointer;
+      let wx = ap.worldX;
+      if (!Number.isFinite(wx)) {
+        wx = this.cameras.main.getWorldPoint(ap.x, ap.y).x;
+      }
+      if (Number.isFinite(wx)) this.movePaddlePointer(wx);
     }
 
     const d = dt / 1000;
@@ -1251,10 +1255,6 @@ export class MainGame extends Phaser.Scene {
       ball.setData('wallU', blocked.up);
       ball.setData('wallL', blocked.left);
       ball.setData('wallR', blocked.right);
-
-      if (blocked.up && Math.abs(body.velocity.y) < 22) {
-        this.ensureBallSpeed(body, ball.y);
-      }
     });
 
     this.bonusGroup.getChildren().forEach((o) => {
