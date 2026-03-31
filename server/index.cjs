@@ -189,6 +189,11 @@ app.use(
     index: false,
     dotfiles: 'ignore',
     maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0,
+    setHeaders(res, filePath) {
+      const lower = filePath.toLowerCase();
+      if (lower.endsWith('.ogg')) res.setHeader('Content-Type', 'audio/ogg');
+      if (lower.endsWith('.webm')) res.setHeader('Content-Type', 'audio/webm');
+    },
   })
 );
 

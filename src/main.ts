@@ -21,12 +21,24 @@ new Phaser.Game({
     autoCenter: Phaser.Scale.CENTER_BOTH,
     width: GAME_WIDTH,
     height: GAME_HEIGHT,
+    expandParent: true,
+  },
+  render: {
+    pixelArt: true,
+    antialias: false,
+    roundPixels: true,
+    powerPreference: 'high-performance',
+  },
+  audio: {
+    disableWebAudio: false,
   },
   physics: {
     default: 'arcade',
     arcade: {
       gravity: { y: 0, x: 0 },
       debug: false,
+      fps: 60,
+      fixedStep: true,
     },
   },
   scene: [PreloadScene, MenuScene, MainGame],

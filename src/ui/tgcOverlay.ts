@@ -53,22 +53,27 @@ export function initTgcOverlayDom() {
   const overlay = $('tgc-overlay');
   const tabProfile = $('tgc-tab-profile');
   const tabLb = $('tgc-tab-leaderboard');
+  const tabAch = $('tgc-tab-achievements');
+  const achStatus = $('tgc-ach-status');
+  const achList = $('tgc-ach-list');
   const input = $('tgc-username') as HTMLInputElement;
   const msg = $('tgc-profile-msg');
   const statsEl = $('tgc-profile-stats');
   const lbList = $('tgc-lb-list');
   const lbStatus = $('tgc-lb-status');
 
-  let activeTab: 'profile' | 'leaderboard' = 'profile';
+  let activeTab: 'profile' | 'leaderboard' | 'achievements' = 'profile';
 
-  function showTab(which: 'profile' | 'leaderboard') {
+  function showTab(which: 'profile' | 'leaderboard' | 'achievements') {
     activeTab = which;
     tabProfile.classList.toggle(HIDDEN, which !== 'profile');
     tabLb.classList.toggle(HIDDEN, which !== 'leaderboard');
+    tabAch.classList.toggle(HIDDEN, which !== 'achievements');
     document.querySelectorAll('.tgc-tabs button').forEach((b) => {
       b.classList.toggle('tgc-active', (b as HTMLElement).dataset.tab === which);
     });
     if (which === 'leaderboard') void loadLeaderboard();
+    if (which === 'achievements') void loadAchievementsPanel();
   }
 
   async function loadLeaderboard() {
@@ -90,15 +95,50 @@ export function initTgcOverlayDom() {
     }
   }
 
+  function formatAchievementsBody(p: Profile): string {
+    const a = p.achievements;
+    const keys = a && typeof a === 'object' ? Object.keys(a) : [];
+    if (!keys.length) {
+      return 'No achievement entries on the server for this profile yet.\n\nThe API supports achievements; the game can report unlocks when you sync your profile.';
+    }
+    return keys
+      .sort((x, y) => x.localeCompare(y))
+      .map((k) => `${k}: ${a![k]}`)
+      .join('\n');
+  }
+
   function formatProfile(p: Profile): string {
     const s = p.stats;
+    const achN = p.achievements && typeof p.achievements === 'object' ? Object.keys(p.achievements).length : 0;
     return [
       `Max level unlocked (cloud): ${p.maxUnlockedLevelIndex + 1}`,
       `High score: ${s.highScore}`,
       `Best session: ${s.bestSessionScore}`,
       `Rounds won: ${s.roundsWon}`,
       `Deaths: ${s.deaths}`,
+      `Achievements (cloud): ${achN} — open the Achievements tab for detail.`,
     ].join('\n');
+  }
+
+  async function loadAchievementsPanel() {
+    achStatus.textContent = 'Loading…';
+    achList.textContent = '';
+    const name = getStoredUsername();
+    if (name.length < 2) {
+      achStatus.textContent = 'Set a player name under Profile, then Save & sync.';
+      return;
+    }
+    const p = await fetchProfile(name);
+    if (p === false) {
+      achStatus.textContent = 'No cloud profile yet — use Profile → Save & sync.';
+      return;
+    }
+    if (p === null) {
+      achStatus.textContent = 'Could not reach API.';
+      return;
+    }
+    achStatus.textContent = '';
+    achList.textContent = formatAchievementsBody(p);
   }
 
   async function saveProfile() {
@@ -173,8 +213,8 @@ export function initTgcOverlayDom() {
 
   document.querySelectorAll('.tgc-tabs button').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const tab = (btn as HTMLElement).dataset.tab as 'profile' | 'leaderboard';
-      showTab(tab);
+      const raw = (btn as HTMLElement).dataset.tab;
+      if (raw === 'profile' || raw === 'leaderboard' || raw === 'achievements') showTab(raw);
     });
   });
 

@@ -16,6 +16,11 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create() {
+    this.scale.refresh();
+    this.input.once('pointerdown', () => {
+      this.sound.unlock();
+    });
+
     setTgcOverlayContext({
       getMaxUnlockedLevel: () =>
         Math.min(

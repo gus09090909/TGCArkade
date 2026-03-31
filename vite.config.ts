@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: './',
+  /** Root deploy (Render, etc.): absolute `/assets/...` avoids broken relative URLs. */
+  base: '/',
   server: {
     port: 5173,
     proxy: {

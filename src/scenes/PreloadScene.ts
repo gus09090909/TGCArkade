@@ -16,6 +16,9 @@ export class PreloadScene extends Phaser.Scene {
     this.load.on('progress', (p: number) => {
       fill.width = 400 * p;
     });
+    this.load.on('loaderror', (file: { key?: string; url?: string }) => {
+      console.error('[TGC] Asset load failed:', file?.key, file?.url);
+    });
 
     this.add.text(w / 2, h / 2 - 20, 'Loading TGC Arkade...', { fontSize: '18px', color: '#eceff1' }).setOrigin(0.5);
 
@@ -107,6 +110,7 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   create() {
+    this.scale.refresh();
     if (this.textures.exists('b-101_gray-anim') && !this.anims.exists('gray-metal-loop')) {
       this.anims.create({
         key: 'gray-metal-loop',

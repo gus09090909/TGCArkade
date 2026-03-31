@@ -8,13 +8,17 @@
     <style>
       html, body {
         margin: 0;
+        width: 100%;
         height: 100%;
+        min-height: 100dvh;
         background: #0a0e1a;
         overflow: hidden;
         touch-action: none;
         font-family: system-ui, Segoe UI, Roboto, sans-serif;
       }
       #game-root {
+        position: fixed;
+        inset: 0;
         width: 100%;
         height: 100%;
         display: flex;
@@ -157,6 +161,7 @@
         <nav class="tgc-tabs">
           <button type="button" data-tab="profile" class="tgc-active">Profile</button>
           <button type="button" data-tab="leaderboard">Leaderboard</button>
+          <button type="button" data-tab="achievements">Achievements</button>
         </nav>
         <div id="tgc-tab-profile" class="tgc-tab">
           <label for="tgc-username">Player name (2–32 characters)</label>
@@ -168,6 +173,10 @@
         <div id="tgc-tab-leaderboard" class="tgc-tab tgc-hidden">
           <ol id="tgc-lb-list"></ol>
           <p id="tgc-lb-status" class="tgc-msg"></p>
+        </div>
+        <div id="tgc-tab-achievements" class="tgc-tab tgc-hidden">
+          <p id="tgc-ach-status" class="tgc-msg"></p>
+          <pre id="tgc-ach-list" class="tgc-stats" style="max-height: 220px"></pre>
         </div>
       </div>
     </div>
