@@ -63,6 +63,8 @@ export class MainGame extends Phaser.Scene {
   private gunTimer?: Phaser.Time.TimerEvent;
   /** One-shot revert to default width after grow/shrink power-up. */
   private paddleSizeRevertTimer?: Phaser.Time.TimerEvent;
+  private lastLaserFireMs = -999999;
+  private readonly laserCooldownMs = 180;
   private glue = false;
   private glueExpireTimer?: Phaser.Time.TimerEvent;
 
@@ -154,8 +156,13 @@ export class MainGame extends Phaser.Scene {
     this.input.enabled = true;
     this.glueExpireTimer?.remove(false);
     this.glueExpireTimer = undefined;
+    this.gunTimer?.remove(false);
+    this.gunTimer = undefined;
+    this.paddleSizeRevertTimer?.remove(false);
+    this.paddleSizeRevertTimer = undefined;
     this.paddleGun = false;
     this.paddleCenterMul = 1;
+    this.lastLaserFireMs = -999999;
 
     document.body.classList.add('tgc-playing-game');
 
@@ -205,6 +212,7 @@ export class MainGame extends Phaser.Scene {
       const launchKeys = (ev: KeyboardEvent) => {
         if (ev.repeat) return;
         if (this.pausedForUi || this.userPaused || this.overlayPausedPhysics) return;
+        if (this.paddleGun) this.tryFireLaser();
         this.releaseGluedBalls();
       };
       this.input.keyboard.on('keydown-SPACE', launchKeys);
@@ -303,12 +311,16 @@ export class MainGame extends Phaser.Scene {
       }
       if (!this.pausedForUi && !this.userPaused && !this.overlayPausedPhysics) {
         this.movePaddlePointer(pointerWorldX(p));
+        if (this.paddleGun) this.tryFireLaser();
       }
       this.releaseGluedBalls();
     };
     this.input.on('pointerdown', onPointerLaunch);
     this.gameRootPointerDown = () => {
       if (!this.scene.isActive()) return;
+      if (this.paddleGun && !this.pausedForUi && !this.userPaused && !this.overlayPausedPhysics) {
+        this.tryFireLaser();
+      }
       this.releaseGluedBalls();
     };
     document.getElementById('game-root')?.addEventListener('pointerdown', this.gameRootPointerDown, {
@@ -490,19 +502,22 @@ export class MainGame extends Phaser.Scene {
     const intrinsicCenterW = Math.max(1, this.textures.getFrame('pad-center').width);
     /**
      * `pad-center` is often a 1–4px strip; `intrinsic * paddleCenterMul` was always below min clamp, so grow/shrink did nothing.
-     * `centerAtMul1` is the effective center width at multiplier 1; power-ups scale from that.
+     * Use a gameplay baseline (px at mul 1) so grow/shrink stays obvious even when the source frame is wide.
      */
-    const centerAtMul1 = Math.max(18, intrinsicCenterW);
+    const centerAtMul1 = Math.max(96, intrinsicCenterW);
     const rw = this.textures.getFrame('pad-right').width;
     const cw = Phaser.Math.Clamp(Math.round(centerAtMul1 * this.paddleCenterMul), 14, 340);
     const total = lw + cw + rw;
 
-    if (!this.paddleRoot) {
+    /** After `scene.restart()`, references can point at destroyed objects — must rebuild or overlaps stay broken. */
+    if (!this.paddleRoot?.active) {
+      this.paddleRoot?.destroy(true);
       this.paddleRoot = this.add.container(GAME_WIDTH / 2, y);
       this.paddleRoot.setDepth(25);
     }
 
-    if (!this.paddleHit) {
+    if (!this.paddleHit?.active) {
+      this.paddleHit?.destroy(true);
       this.paddleHit = this.add.rectangle(this.paddleRoot.x, y, total, Math.max(14, ch - 2), 0x000000, 0);
       this.paddleHit.setVisible(false);
       this.physics.add.existing(this.paddleHit, true);
@@ -538,6 +553,7 @@ export class MainGame extends Phaser.Scene {
 
   /** Keep paddle visual within screen (center ± half width). */
   private clampPaddleIntoBounds() {
+    if (!this.paddleRoot?.active || !this.paddleHit?.active) return;
     const half = this.paddleHalfW;
     const cx = Phaser.Math.Clamp(this.paddleRoot.x, half, GAME_WIDTH - half);
     if (cx === this.paddleRoot.x) return;
@@ -661,11 +677,19 @@ export class MainGame extends Phaser.Scene {
       body.updateFromGameObject();
     }
 
-    if (this.paddleGun) {
-      const py = this.paddleHit.y - this.paddleHit.height / 2 - 4;
-      this.fireBullet(ball.x - 18, py);
-      this.fireBullet(ball.x + 18, py);
-    }
+  }
+
+  /** Laser fires from the paddle on click / Space (classic behaviour), not only on ball bounce. */
+  private tryFireLaser(): boolean {
+    if (!this.paddleGun || this.pausedForUi || !this.paddleHit?.active) return false;
+    const now = this.time.now;
+    if (now - this.lastLaserFireMs < this.laserCooldownMs) return false;
+    this.lastLaserFireMs = now;
+    const spread = Math.max(14, this.paddleHit.width * 0.22);
+    const py = this.paddleTopY() - 4;
+    this.fireBullet(this.paddleHit.x - spread, py, false);
+    this.fireBullet(this.paddleHit.x + spread, py, true);
+    return true;
   }
 
   private schedulePaddleSizeRevert(delayMs: number) {
@@ -678,6 +702,7 @@ export class MainGame extends Phaser.Scene {
   }
 
   private movePaddlePointer(worldX: number) {
+    if (!this.paddleRoot?.active || !this.paddleHit?.active) return;
     const half = this.paddleHalfW;
     const x = Phaser.Math.Clamp(worldX, half, GAME_WIDTH - half);
     if (!Number.isFinite(x)) return;
@@ -759,7 +784,7 @@ export class MainGame extends Phaser.Scene {
     }
   }
 
-  private fireBullet(x: number, y: number) {
+  private fireBullet(x: number, y: number, playSfx = true) {
     const b = this.physics.add.image(x, y, 'pad-bullet') as Phaser.Physics.Arcade.Image;
     b.setDepth(22);
     b.setScale(0.85);
@@ -767,7 +792,7 @@ export class MainGame extends Phaser.Scene {
     body.setVelocity(0, -520);
     body.setSize(b.displayWidth - 2, b.displayHeight - 2);
     this.bulletGroup.add(b);
-    this.playSfx('s-gun');
+    if (playSfx) this.playSfx('s-gun');
     this.time.delayedCall(2200, () => {
       if (b.active) b.destroy();
     });
