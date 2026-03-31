@@ -1,0 +1,17 @@
+---
+description: After code changes, always commit and push to origin (unless user opts out)
+alwaysApply: true
+---
+
+# Git: commit y push al terminar
+
+Cuando completes cambios de código en este repo (tarea resuelta o entrega de un bloque de trabajo):
+
+1. **`git status`** — confirma qué archivos tocaste.
+2. **`git add`** solo los archivos relevantes a la tarea (no mezcles cambios ajenos).
+3. **`git commit -m "..."`** — mensaje en inglés o español, frases completas, qué cambió y por qué en una línea razonable.
+4. **`git push origin main`** (o la rama en la que estés trabajando).
+
+**No** dejes el trabajo solo en local salvo que el usuario diga explícitamente que no suba nada (por ejemplo WIP, sin remoto, o revisión antes de push).
+
+Si `push` falla (auth, red), reintenta o indica el error; no des por cerrada la tarea sin haber intentado subir.
