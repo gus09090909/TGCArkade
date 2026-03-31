@@ -67,9 +67,9 @@ export class MainGame extends Phaser.Scene {
    * Speed magnitude (px/s), aligned with original `speedStep * 1.5` feel from
    * https://github.com/gus09090909/TGC-Arkade/blob/master/js/app/entity/ball.js
    */
-  private readonly ballSpeedMax = 310;
-  private readonly ballSpeedStart = 200;
-  private ballSpeedCurrent = 200;
+  private readonly ballSpeedMax = 425;
+  private readonly ballSpeedStart = 155;
+  private ballSpeedCurrent = 155;
   private scoreText!: Phaser.GameObjects.Text;
   private livesText!: Phaser.GameObjects.Text;
   private levelText!: Phaser.GameObjects.Text;
@@ -613,7 +613,7 @@ export class MainGame extends Phaser.Scene {
     }
 
     if (!this.glue) {
-      this.bumpBallSpeed(ball.getData('steel') ? 3.2 : 2.2);
+      this.bumpBallSpeed(ball.getData('steel') ? 5 : 9);
       this.normalizeBallSpeed(body, true);
     }
 
@@ -627,6 +627,7 @@ export class MainGame extends Phaser.Scene {
       ball.setData('onPaddle', true);
       ball.setData('paddleOff', off);
       ball.removeData('paddleLaunchGrace');
+      ball.removeData('lastPaddleBounceAt');
       body.setVelocity(0, 0);
       ball.x = this.paddleHit.x + off;
       const halfHit = this.paddleHit.height / 2;
@@ -702,7 +703,7 @@ export class MainGame extends Phaser.Scene {
       const tex = size === 'small' ? 'ball-small' : size === 'big' ? 'ball-big' : 'ball-normal';
       ball.setTexture(tex);
     }
-    const sc = size === 'small' ? 0.78 : size === 'big' ? 1.22 : 1;
+    const sc = size === 'small' ? 0.58 : size === 'big' ? 1.36 : 1;
     ball.setScale(sc);
     const r = (Math.min(ball.width, ball.height) / 2) * Math.abs(ball.scaleX);
     const body = ball.body as Phaser.Physics.Arcade.Body;
@@ -788,7 +789,7 @@ export class MainGame extends Phaser.Scene {
     }
 
     bd.immuneUntil = now + (steel ? 42 : 28);
-    this.bumpBallSpeed(ball.getData('steel') ? 3 : 2);
+    this.bumpBallSpeed(ball.getData('steel') ? 5 : 7);
 
     if (!bd.destroyable) {
       this.playBlockHit(true);
@@ -862,6 +863,61 @@ export class MainGame extends Phaser.Scene {
     body.setVelocity(vx, vy);
   }
 
+  /** Rescale every ball in flight to `ballSpeedCurrent` (after big/small power-up speed shifts). */
+  private normalizeAllFlyingBalls(nudgeNearHorizontal: boolean) {
+    this.ballGroup.getChildren().forEach((o) => {
+      const b = o as Phaser.Physics.Arcade.Image;
+      if (!b.active || b.getData('onPaddle')) return;
+      const body = b.body as Phaser.Physics.Arcade.Body;
+      if (!body) return;
+      this.normalizeBallSpeed(body, nudgeNearHorizontal);
+    });
+  }
+
+  /** Glue must apply the same frame you catch the capsule (deferred pickup was one frame late). */
+  private startGluePowerup() {
+    this.glue = true;
+    this.glueExpireTimer?.remove(false);
+    this.glueExpireTimer = this.time.delayedCall(15000, () => {
+      this.glue = false;
+      this.glueExpireTimer = undefined;
+    });
+    this.ballGroup.getChildren().forEach((o) => {
+      const b = o as Phaser.Physics.Arcade.Image;
+      if (!b.active || !b.getData('onPaddle')) return;
+      const bd = b.body as Phaser.Physics.Arcade.Body;
+      bd.setVelocity(0, 0);
+      bd.updateFromGameObject();
+    });
+    this.snapFlyingBallsToPaddleIfInReach();
+  }
+
+  /** If the ball is already skimming the paddle when glue turns on, stick it (original M behaviour). */
+  private snapFlyingBallsToPaddleIfInReach() {
+    const px = this.paddleHit.x;
+    const halfW = this.paddleHalfW;
+    const top = this.paddleTopY();
+    const pbot = top + this.paddleHit.height + 6;
+    this.ballGroup.getChildren().forEach((o) => {
+      const b = o as Phaser.Physics.Arcade.Image;
+      if (!b.active || b.getData('onPaddle')) return;
+      const body = b.body as Phaser.Physics.Arcade.Body;
+      const r = body.halfWidth;
+      if (Math.abs(b.x - px) > halfW + r + 6) return;
+      if (b.y - r > pbot || b.y + r < top - 14) return;
+      const off = Phaser.Math.Clamp(b.x - px, -halfW + r + 4, halfW - r - 4);
+      b.setData('onPaddle', true);
+      b.setData('paddleOff', off);
+      body.setVelocity(0, 0);
+      b.removeData('paddleLaunchGrace');
+      b.removeData('lastPaddleBounceAt');
+      b.x = px + off;
+      const halfHit = this.paddleHit.height / 2;
+      b.y = PADDLE_Y - halfHit - r - 6;
+      body.updateFromGameObject();
+    });
+  }
+
   /**
    * Arcade world bounce + our rescale fought each other. Original game flips components on walls;
    * we do the same here after the physics step (no engine wall collision on the ball).
@@ -898,7 +954,7 @@ export class MainGame extends Phaser.Scene {
         (touchL && !prev.l ? 1 : 0) + (touchR && !prev.r ? 1 : 0) + (touchT && !prev.t ? 1 : 0);
       if (newEdges > 0) {
         this.playSfx('s-wall');
-        this.bumpBallSpeed(1.35 * Math.min(newEdges, 2));
+        this.bumpBallSpeed(2.4 * Math.min(newEdges, 2));
         this.normalizeBallSpeed(body, false);
       }
 
@@ -934,6 +990,10 @@ export class MainGame extends Phaser.Scene {
     bonus.setData('picked', true);
     (bonus.body as Phaser.Physics.Arcade.Body).enable = false;
     bonus.setVisible(false);
+
+    if (defPre.name === 'glue-paddle') {
+      this.startGluePowerup();
+    }
 
     const typeId = typeIdRaw;
     const lx = bonus.x;
@@ -974,25 +1034,14 @@ export class MainGame extends Phaser.Scene {
         b.setData('size', 'big');
         this.applyBallSize(b, 'big');
       });
+      this.ballSpeedCurrent = Math.max(this.ballSpeedStart, this.ballSpeedCurrent - 72);
+      this.normalizeAllFlyingBalls(true);
     } else if (name === 'die') {
+      this.ballSpeedCurrent = this.ballSpeedStart;
       this.ballGroup.clear(true, true);
       this.loseLifeOrDie();
     } else if (name === 'extra-life') {
       this.lives++;
-    } else if (name === 'glue-paddle') {
-      this.glue = true;
-      this.glueExpireTimer?.remove(false);
-      this.glueExpireTimer = this.time.delayedCall(15000, () => {
-        this.glue = false;
-        this.glueExpireTimer = undefined;
-      });
-      this.ballGroup.getChildren().forEach((o) => {
-        const b = o as Phaser.Physics.Arcade.Image;
-        if (!b.active || !b.getData('onPaddle')) return;
-        const bd = b.body as Phaser.Physics.Arcade.Body;
-        bd.setVelocity(0, 0);
-        bd.updateFromGameObject();
-      });
     } else if (name === 'grow-paddle') {
       this.paddleCenterMul = Math.min(1.65, this.paddleCenterMul * 1.35);
       this.buildPaddle(PADDLE_Y);
@@ -1008,6 +1057,8 @@ export class MainGame extends Phaser.Scene {
         b.setData('size', 'small');
         this.applyBallSize(b, 'small');
       });
+      this.ballSpeedCurrent = Math.min(this.ballSpeedMax, this.ballSpeedCurrent + 72);
+      this.normalizeAllFlyingBalls(true);
     } else if (name === 'steel-ball') {
       this.forEachActiveBall((b) => this.setBallSteel(b, true));
     } else if (name === 'laser' || name === 'gun') {
@@ -1149,6 +1200,7 @@ export class MainGame extends Phaser.Scene {
       const b = o as Phaser.Physics.Arcade.Image;
       if (!b.getData('onPaddle')) return;
       b.setData('onPaddle', false);
+      b.removeData('lastPaddleBounceAt');
       const body = b.body as Phaser.Physics.Arcade.Body;
       const off = b.getData('paddleOff') as number;
       const r = body.halfWidth;
@@ -1426,7 +1478,10 @@ export class MainGame extends Phaser.Scene {
         const body = ball.body as Phaser.Physics.Arcade.Body;
         sp = Math.hypot(body.velocity.x, body.velocity.y) || this.ballSpeedCurrent;
       }
-      this.speedDial.rotation = Phaser.Math.DegToRad(((sp - 120) / this.ballSpeedMax) * 240 - 120);
+      const span = Math.max(40, this.ballSpeedMax - this.ballSpeedStart);
+      this.speedDial.rotation = Phaser.Math.DegToRad(
+        ((sp - this.ballSpeedStart) / span) * 240 - 120
+      );
     }
 
     this.ballGroup.getChildren().forEach((o) => {
