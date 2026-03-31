@@ -223,7 +223,11 @@ export class MainGame extends Phaser.Scene {
     this.blockGroup = this.physics.add.staticGroup();
     this.ballGroup = this.physics.add.group({ collideWorldBounds: false });
     this.bonusGroup = this.physics.add.group();
-    this.bulletGroup = this.physics.add.group();
+    this.bulletGroup = this.physics.add.group({
+      allowGravity: false,
+      dragX: 0,
+      dragY: 0,
+    });
     this.hitSparks = new HitSparkPool(this, 17);
 
     this.buildPaddle(PADDLE_Y);
@@ -501,10 +505,13 @@ export class MainGame extends Phaser.Scene {
     const ch = this.textures.getFrame('pad-center').height;
     const intrinsicCenterW = Math.max(1, this.textures.getFrame('pad-center').width);
     /**
-     * `pad-center` is often a 1–4px strip; `intrinsic * paddleCenterMul` was always below min clamp, so grow/shrink did nothing.
-     * Use a gameplay baseline (px at mul 1) so grow/shrink stays obvious even when the source frame is wide.
+     * Narrow strip art needs a synthetic baseline so grow/shrink is visible.
+     * If the PNG center is already full-width, use it as-is — `max(96, intrinsic)` made the paddle huge at mul 1.
      */
-    const centerAtMul1 = Math.max(96, intrinsicCenterW);
+    const centerAtMul1 =
+      intrinsicCenterW >= 24
+        ? intrinsicCenterW
+        : Math.min(88, Math.max(44, intrinsicCenterW * 13));
     const rw = this.textures.getFrame('pad-right').width;
     const cw = Phaser.Math.Clamp(Math.round(centerAtMul1 * this.paddleCenterMul), 14, 340);
     const total = lw + cw + rw;
@@ -581,7 +588,7 @@ export class MainGame extends Phaser.Scene {
     this.gunTimer?.remove(false);
     if (on) {
       this.gunTimer = this.time.addEvent({
-        delay: 10000,
+        delay: 12000,
         callback: () => this.setPaddleGun(false),
       });
     }
@@ -776,7 +783,7 @@ export class MainGame extends Phaser.Scene {
     prev?.remove(false);
     eraseGoData(ball, 'steelTimer');
     if (on) {
-      const ev = this.time.delayedCall(10000, () => {
+      const ev = this.time.delayedCall(12000, () => {
         if (!ball.active || !ball.body) return;
         this.setBallSteel(ball, false);
       });
@@ -788,14 +795,69 @@ export class MainGame extends Phaser.Scene {
     const b = this.physics.add.image(x, y, 'pad-bullet') as Phaser.Physics.Arcade.Image;
     b.setDepth(22);
     b.setScale(0.85);
-    const body = b.body as Phaser.Physics.Arcade.Body;
-    body.setVelocity(0, -520);
-    body.setSize(b.displayWidth - 2, b.displayHeight - 2);
     this.bulletGroup.add(b);
+    const body = b.body as Phaser.Physics.Arcade.Body;
+    body.setAllowGravity(false);
+    body.setDrag(0, 0);
+    body.setVelocity(0, -560);
+    body.setSize(Math.max(4, b.displayWidth - 2), Math.max(4, b.displayHeight - 2));
     if (playSfx) this.playSfx('s-gun');
     this.time.delayedCall(2200, () => {
       if (b.active) b.destroy();
     });
+  }
+
+  /**
+   * Original steel ball: while moving up through destroyable bricks it smashes without bouncing off
+   * (see ball.js `steelMode` + block bounce). Descending hits use normal reflection.
+   */
+  private ballSteelPierceBlockHit(
+    ball: Phaser.Physics.Arcade.Image,
+    block: Phaser.Physics.Arcade.Image | Phaser.Physics.Arcade.Sprite,
+    bd: BlockUserData,
+    body: Phaser.Physics.Arcade.Body,
+    now: number
+  ) {
+    const spd = Math.hypot(body.velocity.x, body.velocity.y) || 1;
+    ball.x += (body.velocity.x / spd) * 5;
+    ball.y += (body.velocity.y / spd) * 5;
+    body.updateFromGameObject();
+
+    this.hitSparks.burst(ball.x, ball.y);
+    bd.immuneUntil = now + 22;
+    this.bumpBallSpeed(5);
+
+    bd.hitsTaken++;
+    bd.hp--;
+    this.playBlockHit(false);
+    const bdef = getBlockDef(bd.typeId);
+    const key = blockTextureKey(bd.typeId, bd.hitsTaken);
+    if (!bdef.grayMetalAnim && key && this.textures.exists(key)) {
+      block.setTexture(key);
+    }
+
+    const target = this.ballSpeedCurrent;
+    const sp = Math.hypot(body.velocity.x, body.velocity.y) || target;
+    if (sp > 1) {
+      body.setVelocity((body.velocity.x / sp) * target, (body.velocity.y / sp) * target);
+    }
+
+    if (bd.hp <= 0) {
+      if (bd.primary) this.primaryLeft = Math.max(0, this.primaryLeft - 1);
+      this.score += bd.score;
+      if (bdef.animateScore) {
+        this.spawnBlockScorePopup(block.x, block.y, bd.score);
+      }
+      if (bd.bonusable) {
+        this.trySpawnBonus(block.x, block.y);
+      }
+      this.blockGroup.remove(block, true, true);
+      block.destroy();
+      this.refreshHud();
+      if (this.primaryLeft <= 0) {
+        this.roundWon();
+      }
+    }
   }
 
   private onBallBlockOverlap(
@@ -809,6 +871,11 @@ export class MainGame extends Phaser.Scene {
     if (!bd || bd.immuneUntil > now) return;
 
     const body = ball.body as Phaser.Physics.Arcade.Body;
+    const steel = !!ball.getData('steel');
+    if (steel && bd.destroyable && body.velocity.y < -28) {
+      this.ballSteelPierceBlockHit(ball, block, bd, body, now);
+      return;
+    }
 
     const bx = ball.body.x + body.width / 2;
     const by = ball.body.y + body.height / 2;
@@ -823,7 +890,6 @@ export class MainGame extends Phaser.Scene {
 
     let nx = 0;
     let ny = 0;
-    const steel = !!ball.getData('steel');
     if (absX * ph < absY * pw) {
       ny = Math.sign(dy) * (ph - absY + 0.5);
       body.velocity.y *= -1;
@@ -1099,13 +1165,13 @@ export class MainGame extends Phaser.Scene {
     } else if (name === 'extra-life') {
       this.lives++;
     } else if (name === 'grow-paddle') {
-      this.paddleCenterMul = Math.min(2.45, this.paddleCenterMul * 1.48);
+      this.paddleCenterMul = 1.45;
       this.buildPaddle(PADDLE_Y);
-      this.schedulePaddleSizeRevert(15000);
+      this.schedulePaddleSizeRevert(12000);
     } else if (name === 'shrink-paddle') {
-      this.paddleCenterMul = Math.max(0.5, this.paddleCenterMul * 0.68);
+      this.paddleCenterMul = 0.7;
       this.buildPaddle(PADDLE_Y);
-      this.schedulePaddleSizeRevert(15000);
+      this.schedulePaddleSizeRevert(12000);
     } else if (name === 'score') {
       /* score already applied via def.score */
     } else if (name === 'small-ball') {
@@ -1164,11 +1230,22 @@ export class MainGame extends Phaser.Scene {
   }
 
   private onBulletBlock(
-    bulletObj: Phaser.GameObjects.GameObject,
-    blockObj: Phaser.GameObjects.GameObject
+    obj1: Phaser.GameObjects.GameObject,
+    obj2: Phaser.GameObjects.GameObject
   ) {
-    const bullet = bulletObj as Phaser.Physics.Arcade.Image;
-    const block = blockObj as Phaser.Physics.Arcade.Image | Phaser.Physics.Arcade.Sprite;
+    const a = obj1 as Phaser.Physics.Arcade.Image;
+    const b = obj2 as Phaser.Physics.Arcade.Image;
+    let bullet: Phaser.Physics.Arcade.Image;
+    let block: Phaser.Physics.Arcade.Image | Phaser.Physics.Arcade.Sprite;
+    if (this.bulletGroup.contains(a)) {
+      bullet = a;
+      block = b as Phaser.Physics.Arcade.Image | Phaser.Physics.Arcade.Sprite;
+    } else if (this.bulletGroup.contains(b)) {
+      bullet = b;
+      block = a as Phaser.Physics.Arcade.Image | Phaser.Physics.Arcade.Sprite;
+    } else {
+      return;
+    }
     const bd = block.getData('bd') as BlockUserData | undefined;
     if (!bd || !bd.destroyable) {
       bullet.destroy();
