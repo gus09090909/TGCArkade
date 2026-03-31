@@ -339,6 +339,11 @@ export class MainGame extends Phaser.Scene {
     return `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
   }
 
+  /** OS cursor visible again (canvas CSS used cursor:none while playing). */
+  private showEndgameCursor() {
+    document.body.classList.remove('tgc-playing-game');
+  }
+
   private goToMenu() {
     document.body.classList.remove('tgc-playing-game');
     try {
@@ -482,9 +487,14 @@ export class MainGame extends Phaser.Scene {
   private buildPaddle(y: number) {
     const lw = this.textures.getFrame('pad-left').width;
     const ch = this.textures.getFrame('pad-center').height;
-    const baseCw = this.textures.getFrame('pad-center').width;
+    const intrinsicCenterW = Math.max(1, this.textures.getFrame('pad-center').width);
+    /**
+     * `pad-center` is often a 1–4px strip; `intrinsic * paddleCenterMul` was always below min clamp, so grow/shrink did nothing.
+     * `centerAtMul1` is the effective center width at multiplier 1; power-ups scale from that.
+     */
+    const centerAtMul1 = Math.max(18, intrinsicCenterW);
     const rw = this.textures.getFrame('pad-right').width;
-    const cw = Phaser.Math.Clamp(Math.round(baseCw * this.paddleCenterMul), 18, 340);
+    const cw = Phaser.Math.Clamp(Math.round(centerAtMul1 * this.paddleCenterMul), 14, 340);
     const total = lw + cw + rw;
 
     if (!this.paddleRoot) {
@@ -1287,6 +1297,7 @@ export class MainGame extends Phaser.Scene {
     if (this.pausedForUi) return;
     this.pausedForUi = true;
     this.physics.pause();
+    this.showEndgameCursor();
     this.bonusGroup.clear(true, true);
     this.bulletGroup.clear(true, true);
     this.playSfx('s-win');
@@ -1377,6 +1388,7 @@ export class MainGame extends Phaser.Scene {
     if (this.pausedForUi) return;
     this.pausedForUi = true;
     this.physics.pause();
+    this.showEndgameCursor();
     if (this.score > getLocalHighScore()) setLocalHighScore(this.score);
     const user = getStoredUsername();
     if (user.length >= 2) {
