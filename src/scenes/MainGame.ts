@@ -492,6 +492,19 @@ export class MainGame extends Phaser.Scene {
   }
 
   /**
+   * Phaser `overlap(group, paddleHit)` uses collideSpriteVsGroup(paddle, group): callback is always
+   * (paddleHit, ballOrBonus) — never assume the ball is the first argument.
+   */
+  private ballFromPaddlePair(
+    obj1: Phaser.GameObjects.GameObject,
+    obj2: Phaser.GameObjects.GameObject
+  ): Phaser.Physics.Arcade.Image | null {
+    if (obj1 === this.paddleHit) return obj2 as Phaser.Physics.Arcade.Image;
+    if (obj2 === this.paddleHit) return obj1 as Phaser.Physics.Arcade.Image;
+    return null;
+  }
+
+  /**
    * Legacy `ball.bounce(paddle)`: normX from hit position, speeds aim upward (Phaser Y+ down).
    */
   private applyClassicPaddleBounce(ball: Phaser.Physics.Arcade.Image) {
@@ -541,10 +554,11 @@ export class MainGame extends Phaser.Scene {
   }
 
   private onBallPaddleOverlap(
-    ballObj: Phaser.GameObjects.GameObject,
-    _pad: Phaser.GameObjects.GameObject
+    obj1: Phaser.GameObjects.GameObject,
+    obj2: Phaser.GameObjects.GameObject
   ) {
-    const ball = ballObj as Phaser.Physics.Arcade.Image;
+    const ball = this.ballFromPaddlePair(obj1, obj2);
+    if (!ball?.active || !ball.body) return;
     this.applyClassicPaddleBounce(ball);
   }
 
@@ -580,6 +594,7 @@ export class MainGame extends Phaser.Scene {
     if (onPaddle) {
       ball.setData('paddleOff', (this.ballGroup.getLength() % 3 - 1) * 14);
       body.setVelocity(0, 0);
+      ball.setData('paddleLaunchGrace', this.time.now + 480);
     }
     this.ballGroup.add(ball);
     attachBallTrail(this, ball);
@@ -738,11 +753,9 @@ export class MainGame extends Phaser.Scene {
     body.setVelocity(vx, vy);
   }
 
-  private onBonusPaddle(
-    bonusObj: Phaser.GameObjects.GameObject,
-    _p: Phaser.GameObjects.GameObject
-  ) {
-    const bonus = bonusObj as Phaser.Physics.Arcade.Image;
+  private onBonusPaddle(obj1: Phaser.GameObjects.GameObject, obj2: Phaser.GameObjects.GameObject) {
+    const bonus = this.ballFromPaddlePair(obj1, obj2);
+    if (!bonus?.active || bonus.getData('typeId') === undefined) return;
     const typeId = bonus.getData('typeId') as number;
     const def = BONUS_TYPES[typeId];
     if (!def) {
@@ -1129,8 +1142,9 @@ export class MainGame extends Phaser.Scene {
     ball.x = x + (typeof off === 'number' ? off : 0);
     const body = ball.body as Phaser.Physics.Arcade.Body;
     const br = body.halfWidth;
-    ball.y = PADDLE_Y - halfHit - br - 8;
+    ball.y = PADDLE_Y - halfHit - br - 14;
     body.updateFromGameObject();
+    ball.setData('paddleLaunchGrace', this.time.now + 480);
   }
 
   private refreshHud() {
@@ -1179,6 +1193,10 @@ export class MainGame extends Phaser.Scene {
       ball.setData('wallU', blocked.up);
       ball.setData('wallL', blocked.left);
       ball.setData('wallR', blocked.right);
+
+      if (blocked.up && Math.abs(body.velocity.y) < 48) {
+        this.ensureBallSpeed(body, ball.y);
+      }
     });
 
     this.bonusGroup.getChildren().forEach((o) => {
