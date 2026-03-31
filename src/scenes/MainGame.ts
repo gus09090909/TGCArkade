@@ -180,9 +180,10 @@ export class MainGame extends Phaser.Scene {
       .setDepth(50);
     if (this.textures.exists('dashboard-speed')) {
       this.speedDial = this.add
-        .image(96, 42, 'dashboard-speed')
-        .setDepth(48)
-        .setScale(0.85);
+        .image(GAME_WIDTH - 40, GAME_HEIGHT - 58, 'dashboard-speed')
+        .setDepth(50)
+        .setScale(0.4)
+        .setAlpha(0.75);
     }
     this.sessionStartWall = Date.now();
     this.hintText = this.add
@@ -209,24 +210,24 @@ export class MainGame extends Phaser.Scene {
       },
     });
     if (this.textures.exists('btn-user')) {
-      this.add
-        .image(GAME_WIDTH - 14, GAME_HEIGHT - 14, 'btn-user')
-        .setOrigin(1, 1)
-        .setScale(0.85)
-        .setDepth(55)
-        .setInteractive({ useHandCursor: true })
-        .on('pointerdown', () => openTgcOverlay());
+      const ix = GAME_WIDTH - 14;
+      const iy = GAME_HEIGHT - 14;
+      this.add.image(ix, iy, 'btn-user').setOrigin(1, 1).setScale(0.85).setDepth(55);
+      const userZ = this.add.zone(ix - 20, iy - 20, 48, 48).setDepth(56);
+      userZ.setInteractive({ useHandCursor: true });
+      userZ.on('pointerdown', () => openTgcOverlay());
     }
 
+    const dashZ = this.add.zone(GAME_WIDTH - 72, GAME_HEIGHT - 20, 128, 40).setDepth(56);
+    dashZ.setInteractive({ useHandCursor: true });
+    dashZ.on('pointerdown', () => this.goToMenu());
     this.add
-      .text(GAME_WIDTH - 12, GAME_HEIGHT - 12, 'Menu · M', uiStyle({
+      .text(GAME_WIDTH - 12, GAME_HEIGHT - 12, 'Dashboard · M', uiStyle({
         fontSize: '18px',
         color: '#78909c',
       }))
       .setOrigin(1, 1)
-      .setDepth(55)
-      .setInteractive({ useHandCursor: true })
-      .on('pointerdown', () => this.goToMenu());
+      .setDepth(57);
 
     /** Overlap + manual bounce only — collider + bounce(1) on the ball fought Arcade and felt random. */
     this.physics.add.overlap(
@@ -737,12 +738,14 @@ export class MainGame extends Phaser.Scene {
    * Arcade Y+ is down. Keep |v| ≈ ballSpeed and never leave the ball crawling horizontally
    * (old clamp pushed vy positive when vy was ~0, so it never climbed).
    */
-  /** Only rescale speed; keep direction (avoids ceiling / side-wall “crawl” bugs). */
+  /**
+   * Rescale to target speed, then forbid near-pure-horizontal motion (|vy| too small vs |vx|).
+   */
   private ensureBallSpeed(body: Phaser.Physics.Arcade.Body, _ballY: number) {
     const target = this.ballSpeed;
     let vx = body.velocity.x;
     let vy = body.velocity.y;
-    const sp = Math.hypot(vx, vy);
+    let sp = Math.hypot(vx, vy);
 
     if (sp < 65) {
       const a = -Math.PI / 2 + Phaser.Math.FloatBetween(-0.55, 0.55);
@@ -750,7 +753,19 @@ export class MainGame extends Phaser.Scene {
       return;
     }
 
-    body.setVelocity((vx / sp) * target, (vy / sp) * target);
+    vx = (vx / sp) * target;
+    vy = (vy / sp) * target;
+
+    const minAbsVy = target * 0.28;
+    if (Math.abs(vy) < minAbsVy) {
+      const signY = Math.sign(vy) || Phaser.Math.RND.pick([-1, 1]);
+      vy = signY * minAbsVy;
+      const vxMag = Math.sqrt(Math.max(0, target * target - vy * vy));
+      const signX = Math.sign(vx) || Phaser.Math.RND.pick([-1, 1]);
+      vx = signX * vxMag;
+    }
+
+    body.setVelocity(vx, vy);
   }
 
   private onBonusPaddle(obj1: Phaser.GameObjects.GameObject, obj2: Phaser.GameObjects.GameObject) {
@@ -1261,6 +1276,8 @@ export class MainGame extends Phaser.Scene {
 
       const sp = Math.hypot(body.velocity.x, body.velocity.y);
       if (sp < this.ballSpeed * 0.38) {
+        this.ensureBallSpeed(body, ball.y);
+      } else if (sp > 90 && Math.abs(body.velocity.y) < sp * 0.22) {
         this.ensureBallSpeed(body, ball.y);
       }
     });
