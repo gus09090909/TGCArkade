@@ -4,7 +4,6 @@ services:
   - type: web
     name: tgc-arkade
     runtime: node
-    plan: free
     buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:
