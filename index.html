@@ -2,19 +2,27 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0a0e1a" />
-    <title>TGC Arkade</title>
+    <meta name="description" content="TGC-Arkade — arkanoid-style game (Phaser remake aligned with the classic HTML5 build)." />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#050810" />
+    <title>TGC-Arkade — Simple arkanoid style game</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet" />
     <style>
       html, body {
         margin: 0;
         width: 100%;
         height: 100%;
         min-height: 100dvh;
-        background: #0a0e1a;
+        background: #050810;
         overflow: hidden;
         touch-action: none;
-        font-family: system-ui, Segoe UI, Roboto, sans-serif;
+        font-family: "VT323", system-ui, sans-serif;
+        -webkit-tap-highlight-color: transparent;
       }
       #game-root {
         position: fixed;
@@ -147,9 +155,14 @@
         line-height: 1.65;
         color: #eceff1;
       }
+      #tgc-overlay .tgc-panel,
+      #tgc-overlay input,
+      #tgc-overlay button {
+        font-family: "VT323", system-ui, sans-serif;
+      }
     </style>
   </head>
-  <body>
+  <body oncontextmenu="return false;">
     <div id="game-root"></div>
 
     <div id="tgc-overlay" class="tgc-hidden" aria-hidden="true">

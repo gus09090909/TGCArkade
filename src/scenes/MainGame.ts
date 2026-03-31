@@ -9,6 +9,7 @@ import {
   setLocalHighScore,
 } from '../api/tgcCloud';
 import { BALL_RADIUS, GAME_HEIGHT, GAME_WIDTH, PADDLE_Y } from '../game/constants';
+import { uiStyle } from '../game/uiFonts';
 import { blockTextureKey, getBlockDef } from '../game/blockRegistry';
 import { blockWorldRect, parseLevelString, type PlacedBlock } from '../game/parseLevel';
 import { BONUS_TYPES, bonusTextureFolder, type BonusTypeDef } from '../game/bonusesData';
@@ -155,14 +156,14 @@ export class MainGame extends Phaser.Scene {
 
     this.physics.world.setBounds(0, 0, GAME_WIDTH, GAME_HEIGHT, true, true, true, false);
 
-    this.scoreText = this.add.text(12, 8, '', { fontSize: '14px', color: '#eceff1' }).setDepth(50);
-    this.livesText = this.add.text(12, 28, '', { fontSize: '14px', color: '#eceff1' }).setDepth(50);
+    this.scoreText = this.add.text(12, 8, '', uiStyle({ fontSize: '20px', color: '#eceff1' })).setDepth(50);
+    this.livesText = this.add.text(12, 28, '', uiStyle({ fontSize: '20px', color: '#eceff1' })).setDepth(50);
     this.levelText = this.add
-      .text(GAME_WIDTH / 2, 8, '', { fontSize: '13px', color: '#b0bec5' })
+      .text(GAME_WIDTH / 2, 8, '', uiStyle({ fontSize: '18px', color: '#b0bec5' }))
       .setOrigin(0.5, 0)
       .setDepth(50);
     this.timeText = this.add
-      .text(GAME_WIDTH - 12, 8, '', { fontSize: '14px', color: '#80deea', fontFamily: 'Consolas, monospace' })
+      .text(GAME_WIDTH - 12, 8, '', uiStyle({ fontSize: '20px', color: '#80deea' }))
       .setOrigin(1, 0)
       .setDepth(50);
     if (this.textures.exists('dashboard-speed')) {
@@ -173,10 +174,10 @@ export class MainGame extends Phaser.Scene {
     }
     this.sessionStartWall = Date.now();
     this.hintText = this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 150, 'Tap / click — launch ball', {
-        fontSize: '14px',
+      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 150, 'Tap / click — launch ball', uiStyle({
+        fontSize: '20px',
         color: '#90a4ae',
-      })
+      }))
       .setOrigin(0.5)
       .setDepth(50);
 
@@ -206,10 +207,10 @@ export class MainGame extends Phaser.Scene {
     }
 
     this.add
-      .text(GAME_WIDTH - 12, GAME_HEIGHT - 12, 'Menu · M', {
-        fontSize: '11px',
+      .text(GAME_WIDTH - 12, GAME_HEIGHT - 12, 'Menu · M', uiStyle({
+        fontSize: '18px',
         color: '#78909c',
-      })
+      }))
       .setOrigin(1, 1)
       .setDepth(55)
       .setInteractive({ useHandCursor: true })
@@ -266,11 +267,11 @@ export class MainGame extends Phaser.Scene {
       g.fillStyle(0x000011, 0.55);
       g.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
       const t = this.add
-        .text(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'Paused\n\nP or click to resume', {
-          fontSize: '22px',
+        .text(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'Paused\n\nP or click to resume', uiStyle({
+          fontSize: '28px',
           color: '#eceff1',
           align: 'center',
-        })
+        }))
         .setOrigin(0.5);
       const hit = this.add
         .rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.15)
@@ -290,11 +291,11 @@ export class MainGame extends Phaser.Scene {
       return def.name.toUpperCase().replace(/-/g, ' ');
     })();
     const t = this.add
-      .text(x, y, caption, {
-        fontSize: '19px',
+      .text(x, y, caption, uiStyle({
+        fontSize: '24px',
         color: '#ffd700',
         fontStyle: 'bold',
-      })
+      }))
       .setOrigin(0.5)
       .setDepth(540);
     this.tweens.add({
@@ -309,10 +310,10 @@ export class MainGame extends Phaser.Scene {
 
   private spawnBlockScorePopup(x: number, y: number, points: number) {
     const t = this.add
-      .text(x + 3, y + 7, String(points), {
-        fontSize: '20px',
+      .text(x + 3, y + 7, String(points), uiStyle({
+        fontSize: '26px',
         color: '#ffd700',
-      })
+      }))
       .setOrigin(0.5)
       .setDepth(540);
     t.setAlpha(0.85);
@@ -799,19 +800,19 @@ export class MainGame extends Phaser.Scene {
       });
     }
     this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 28, finished ? 'You cleared all stages!' : 'Stage clear!', {
-        fontSize: finished ? '22px' : '28px',
+      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 28, finished ? 'You cleared all stages!' : 'Stage clear!', uiStyle({
+        fontSize: finished ? '28px' : '34px',
         color: '#fff59d',
         align: 'center',
         wordWrap: { width: GAME_WIDTH - 48 },
-      })
+      }))
       .setOrigin(0.5)
       .setDepth(60);
     const btn = this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 32, finished ? 'Play again from start' : 'Next level', {
-        fontSize: '18px',
+      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 32, finished ? 'Play again from start' : 'Next level', uiStyle({
+        fontSize: '24px',
         color: '#90caf9',
-      })
+      }))
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true })
       .setDepth(60);
@@ -828,17 +829,17 @@ export class MainGame extends Phaser.Scene {
     const user = getStoredUsername();
     if (user.length >= 2) void sessionEnd(user, this.score);
     this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 30, 'Game over', {
-        fontSize: '32px',
+      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 30, 'Game over', uiStyle({
+        fontSize: '40px',
         color: '#ef9a9a',
-      })
+      }))
       .setOrigin(0.5)
       .setDepth(60);
     const r = this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20, 'Play again', {
-        fontSize: '18px',
+      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20, 'Play again', uiStyle({
+        fontSize: '24px',
         color: '#90caf9',
-      })
+      }))
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true })
       .setDepth(60);

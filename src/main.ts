@@ -12,34 +12,43 @@ if (!parent) {
 
 initTgcOverlayDom();
 
-new Phaser.Game({
-  type: Phaser.AUTO,
-  parent,
-  backgroundColor: '#0a0e1a',
-  scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
-    width: GAME_WIDTH,
-    height: GAME_HEIGHT,
-    expandParent: true,
-  },
-  render: {
-    pixelArt: true,
-    antialias: false,
-    roundPixels: true,
-    powerPreference: 'high-performance',
-  },
-  audio: {
-    disableWebAudio: false,
-  },
-  physics: {
-    default: 'arcade',
-    arcade: {
-      gravity: { y: 0, x: 0 },
-      debug: false,
-      fps: 60,
-      fixedStep: true,
+function createGame() {
+  return new Phaser.Game({
+    type: Phaser.AUTO,
+    parent,
+    backgroundColor: '#0a0e1a',
+    scale: {
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+      width: GAME_WIDTH,
+      height: GAME_HEIGHT,
+      expandParent: true,
     },
-  },
-  scene: [PreloadScene, MenuScene, MainGame],
-});
+    /** Default smoothing like classic CreateJS bitmaps — not pixelArt. */
+    render: {
+      antialias: true,
+      powerPreference: 'high-performance',
+    },
+    audio: {
+      disableWebAudio: false,
+    },
+    physics: {
+      default: 'arcade',
+      arcade: {
+        gravity: { y: 0, x: 0 },
+        debug: false,
+        fixedStep: false,
+      },
+    },
+    scene: [PreloadScene, MenuScene, MainGame],
+  });
+}
+
+/** Match classic: wait for VT323 / Press Start 2P before drawing UI text. */
+if (document.fonts?.ready) {
+  void document.fonts.ready.then(() => {
+    createGame();
+  });
+} else {
+  createGame();
+}

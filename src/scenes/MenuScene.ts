@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../game/constants';
+import { titleStyle, uiStyle } from '../game/uiFonts';
 import { getGameOptions, setGameOptions } from '../game/gameOptions';
 import { syncBgm } from '../game/bgm';
 import { openTgcOverlay, setTgcOverlayContext } from '../ui/tgcOverlay';
@@ -47,10 +48,10 @@ export class MenuScene extends Phaser.Scene {
     }
 
     this.add
-      .text(GAME_WIDTH / 2, 22, 'TGC Arkade — Space', {
-        fontSize: '20px',
+      .text(GAME_WIDTH / 2, 22, 'TGC Arkade — Space', uiStyle({
+        fontSize: '26px',
         color: '#eceff1',
-      })
+      }))
       .setOrigin(0.5, 0)
       .setDepth(5);
 
@@ -76,10 +77,10 @@ export class MenuScene extends Phaser.Scene {
     mkBtn('btn-user', 12, 113, () => openTgcOverlay());
 
     this.add
-      .text(GAME_WIDTH / 2, oy + DASH_H + 18, 'New game (reset progress)', {
-        fontSize: '14px',
+      .text(GAME_WIDTH / 2, oy + DASH_H + 18, 'New game (reset progress)', uiStyle({
+        fontSize: '18px',
         color: '#78909c',
-      })
+      }))
       .setOrigin(0.5, 0)
       .setDepth(10)
       .setInteractive({ useHandCursor: true })
@@ -88,10 +89,10 @@ export class MenuScene extends Phaser.Scene {
       });
 
     this.add
-      .text(12, GAME_HEIGHT - 14, 'Space episode · 51 stages', {
-        fontSize: '12px',
+      .text(12, GAME_HEIGHT - 14, 'Space episode · 51 stages', uiStyle({
+        fontSize: '16px',
         color: '#546e7a',
-      })
+      }))
       .setOrigin(0, 1)
       .setDepth(10);
   }
@@ -119,27 +120,27 @@ export class MenuScene extends Phaser.Scene {
       'P pauses · M returns to this menu · Esc closes profile.';
 
     const txt = this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20, 'How to play', {
-        fontSize: '22px',
+      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 20, 'How to play', titleStyle({
+        fontSize: '16px',
         color: '#fff59d',
         align: 'center',
-      })
+      }))
       .setOrigin(0.5);
 
     const sub = this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 24, body, {
-        fontSize: '14px',
+      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 24, body, uiStyle({
+        fontSize: '20px',
         color: '#cfd8dc',
         align: 'center',
         wordWrap: { width: GAME_WIDTH - 80 },
-      })
+      }))
       .setOrigin(0.5, 0);
 
     const close = this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT - 36, 'Close', {
-        fontSize: '16px',
+      .text(GAME_WIDTH / 2, GAME_HEIGHT - 36, 'Close', uiStyle({
+        fontSize: '22px',
         color: '#90caf9',
-      })
+      }))
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => this.clearModal());
@@ -157,16 +158,16 @@ export class MenuScene extends Phaser.Scene {
     c.add(g);
 
     const title = this.add
-      .text(GAME_WIDTH / 2, 110, 'Options', { fontSize: '24px', color: '#fff59d' })
+      .text(GAME_WIDTH / 2, 110, 'Options', titleStyle({ fontSize: '18px', color: '#fff59d' }))
       .setOrigin(0.5);
 
     const musicLine = this.add
-      .text(GAME_WIDTH / 2, 170, '', { fontSize: '18px', color: '#eceff1' })
+      .text(GAME_WIDTH / 2, 170, '', uiStyle({ fontSize: '24px', color: '#eceff1' }))
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
 
     const sfxLine = this.add
-      .text(GAME_WIDTH / 2, 210, '', { fontSize: '18px', color: '#eceff1' })
+      .text(GAME_WIDTH / 2, 210, '', uiStyle({ fontSize: '24px', color: '#eceff1' }))
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
 
@@ -189,10 +190,10 @@ export class MenuScene extends Phaser.Scene {
     redraw();
 
     const close = this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT - 36, 'Close', {
-        fontSize: '16px',
+      .text(GAME_WIDTH / 2, GAME_HEIGHT - 36, 'Close', uiStyle({
+        fontSize: '22px',
         color: '#90caf9',
-      })
+      }))
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => this.clearModal());

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { IMG, SND } from '../game/assetBase';
+import { uiStyle } from '../game/uiFonts';
 import { BONUS_TYPES, bonusTextureFolder } from '../game/bonusesData';
 import { BLOCK_DEFS } from '../game/blockRegistry';
 
@@ -20,7 +21,9 @@ export class PreloadScene extends Phaser.Scene {
       console.error('[TGC] Asset load failed:', file?.key, file?.url);
     });
 
-    this.add.text(w / 2, h / 2 - 20, 'Loading TGC Arkade...', { fontSize: '18px', color: '#eceff1' }).setOrigin(0.5);
+    this.add
+      .text(w / 2, h / 2 - 20, 'Loading TGC Arkade...', uiStyle({ fontSize: '24px', color: '#eceff1' }))
+      .setOrigin(0.5);
 
     const bhDone = new Set<string>();
     const blkKeys = new Set<string>();
