@@ -17,6 +17,11 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create() {
+    try {
+      this.physics.world.resume();
+    } catch {
+      /* */
+    }
     this.scale.refresh();
     this.input.once('pointerdown', () => {
       this.sound.unlock();
