@@ -1,0 +1,12 @@
+# Render Blueprint: one web service (Express static + /api).
+# Connect a persistent disk mounted at /var/data if you need profiles to survive deploys.
+services:
+  - type: web
+    name: tgc-arkade
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0e1a" />
+    <title>TGC Arkade</title>
+    <style>
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #0a0e1a;
+        overflow: hidden;
+        touch-action: none;
+        font-family: system-ui, Segoe UI, Roboto, sans-serif;
+      }
+      #game-root {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .tgc-hidden {
+        display: none !important;
+      }
+      #tgc-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        box-sizing: border-box;
+      }
+      #tgc-overlay .tgc-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(5, 8, 18, 0.82);
+      }
+      #tgc-overlay .tgc-panel {
+        position: relative;
+        width: min(420px, 100%);
+        max-height: min(520px, 90vh);
+        overflow: auto;
+        background: linear-gradient(165deg, #1a2332 0%, #0f1419 100%);
+        border: 1px solid rgba(144, 202, 249, 0.25);
+        border-radius: 12px;
+        padding: 20px 20px 16px;
+        color: #eceff1;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+      }
+      .tgc-close {
+        position: absolute;
+        top: 8px;
+        right: 10px;
+        border: none;
+        background: transparent;
+        color: #90a4ae;
+        font-size: 26px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 4px 8px;
+      }
+      .tgc-close:hover {
+        color: #fff;
+      }
+      .tgc-tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+        margin-top: 8px;
+      }
+      .tgc-tabs button {
+        flex: 1;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(144, 202, 249, 0.2);
+        background: rgba(0, 0, 0, 0.25);
+        color: #b0bec5;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      .tgc-tabs button.tgc-active {
+        background: rgba(92, 107, 192, 0.35);
+        color: #fff;
+        border-color: rgba(144, 202, 249, 0.45);
+      }
+      .tgc-tab label {
+        display: block;
+        font-size: 13px;
+        color: #90a4ae;
+        margin-bottom: 6px;
+      }
+      #tgc-username {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(0, 0, 0, 0.35);
+        color: #fff;
+        font-size: 15px;
+        margin-bottom: 12px;
+      }
+      #tgc-save-profile {
+        width: 100%;
+        padding: 11px;
+        border: none;
+        border-radius: 8px;
+        background: #5c6bc0;
+        color: #fff;
+        font-size: 15px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      #tgc-save-profile:hover {
+        background: #6f7dd2;
+      }
+      .tgc-msg {
+        min-height: 1.2em;
+        font-size: 13px;
+        color: #ffb74d;
+        margin: 10px 0 0;
+      }
+      .tgc-stats {
+        margin-top: 14px;
+        padding: 12px;
+        background: rgba(0, 0, 0, 0.28);
+        border-radius: 8px;
+        font-size: 13px;
+        line-height: 1.5;
+        color: #cfd8dc;
+        white-space: pre-wrap;
+        overflow: auto;
+        max-height: 200px;
+      }
+      #tgc-lb-list {
+        margin: 0;
+        padding-left: 22px;
+        font-size: 14px;
+        line-height: 1.65;
+        color: #eceff1;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game-root"></div>
+
+    <div id="tgc-overlay" class="tgc-hidden" aria-hidden="true">
+      <div class="tgc-backdrop" aria-hidden="true"></div>
+      <div class="tgc-panel" role="dialog" aria-labelledby="tgc-dialog-title">
+        <button type="button" id="tgc-close" class="tgc-close" aria-label="Close">×</button>
+        <h2 id="tgc-dialog-title" style="margin: 0 0 4px; font-size: 18px; font-weight: 600">Player</h2>
+        <p style="margin: 0 0 12px; font-size: 12px; color: #78909c">Cloud sync uses the same API as the classic TGC-Arkade server.</p>
+        <nav class="tgc-tabs">
+          <button type="button" data-tab="profile" class="tgc-active">Profile</button>
+          <button type="button" data-tab="leaderboard">Leaderboard</button>
+        </nav>
+        <div id="tgc-tab-profile" class="tgc-tab">
+          <label for="tgc-username">Player name (2–32 characters)</label>
+          <input id="tgc-username" maxlength="32" autocomplete="username" />
+          <button type="button" id="tgc-save-profile">Save &amp; sync</button>
+          <p id="tgc-profile-msg" class="tgc-msg"></p>
+          <pre id="tgc-profile-stats" class="tgc-stats"></pre>
+        </div>
+        <div id="tgc-tab-leaderboard" class="tgc-tab tgc-hidden">
+          <ol id="tgc-lb-list"></ol>
+          <p id="tgc-lb-status" class="tgc-msg"></p>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

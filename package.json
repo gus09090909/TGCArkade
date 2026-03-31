@@ -1,0 +1,24 @@
+{
+  "name": "tgc-arkade",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "TGC Arkade — Phaser 3 + Vite remake (The Giveaways Club)",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server/index.cjs",
+    "gen:levels": "node scripts/extract-space-levels.mjs",
+    "import:assets": "node scripts/import-assets.mjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "phaser": "^3.80.1"
+  },
+  "devDependencies": {
+    "typescript": "~5.6.2",
+    "vite": "^5.4.11"
+  }
+}
