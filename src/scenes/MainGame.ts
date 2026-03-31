@@ -97,6 +97,8 @@ export class MainGame extends Phaser.Scene {
   private sessionPlayMs = 0;
   /** Original bonus used ~speedStep 4 with curved path; straight drop was tuned too fast at 152. */
   private readonly bonusFallPxPerSec = 78;
+  /** Native canvas listener (Phaser may skip scene `pointerdown` if event.target !== canvas). */
+  private domPointerLaunch?: () => void;
 
   constructor() {
     super('MainGame');
@@ -128,6 +130,10 @@ export class MainGame extends Phaser.Scene {
     }
     this.boot = {};
     this.pausedForUi = false;
+    this.userPaused = false;
+    this.overlayPausedPhysics = false;
+    this.pauseLayer?.destroy(true);
+    this.pauseLayer = undefined;
     this.sessionPlayMs = 0;
     this.bonusIncidence = {};
     this.glue = false;
@@ -145,6 +151,11 @@ export class MainGame extends Phaser.Scene {
     document.body.classList.add('tgc-playing-game');
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      const c = this.game.canvas;
+      if (c && this.domPointerLaunch) {
+        c.removeEventListener('pointerdown', this.domPointerLaunch);
+        this.domPointerLaunch = undefined;
+      }
       document.body.classList.remove('tgc-playing-game');
       this.events.off(Phaser.Scenes.Events.POST_UPDATE, this.applyManualBallWalls, this);
       this.overlayPausedPhysics = false;
@@ -298,7 +309,7 @@ export class MainGame extends Phaser.Scene {
       if (this.cursors?.left?.isDown || this.cursors?.right?.isDown) return;
       this.movePaddlePointer(pointerWorldX(p));
     };
-    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+    const onPointerLaunch = (p: Phaser.Input.Pointer) => {
       if (!audioUnlocked) {
         this.sound.unlock();
         audioUnlocked = true;
@@ -307,7 +318,10 @@ export class MainGame extends Phaser.Scene {
         this.movePaddlePointer(pointerWorldX(p));
       }
       this.releaseGluedBalls();
-    });
+    };
+    this.input.on('pointerdown', onPointerLaunch);
+    this.domPointerLaunch = () => this.releaseGluedBalls();
+    this.game.canvas?.addEventListener('pointerdown', this.domPointerLaunch);
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       syncPointerToPaddle(p);
     });
@@ -1204,6 +1218,23 @@ export class MainGame extends Phaser.Scene {
     this.bonusGroup.add(b);
   }
 
+  /**
+   * If `onPaddle` was lost but the ball is still sitting on the paddle row (nearly still), treat as serve.
+   * Scene restarts reuse the same Scene instance — stale `userPaused` used to block all launches before.
+   */
+  private ballIdleOnPaddleRow(ball: Phaser.Physics.Arcade.Image): boolean {
+    const body = ball.body as Phaser.Physics.Arcade.Body;
+    if (!ball.active || !body?.enable) return false;
+    const sp = Math.hypot(body.velocity.x, body.velocity.y);
+    if (sp > 40) return false;
+    const r = body.halfWidth;
+    const targetY = this.paddleTopY() - r - 6;
+    if (Math.abs(ball.y - targetY) > 20) return false;
+    const dx = Math.abs(ball.x - this.paddleHit.x);
+    if (dx > this.paddleHalfW + r + 16) return false;
+    return true;
+  }
+
   private releaseGluedBalls() {
     if (this.pausedForUi || this.userPaused) return;
     if (!this.overlayPausedPhysics && this.physics.world.isPaused) {
@@ -1216,13 +1247,19 @@ export class MainGame extends Phaser.Scene {
     const sp = Math.max(48, this.ballSpeedCurrent);
     this.ballGroup.getChildren().forEach((o) => {
       const b = o as Phaser.Physics.Arcade.Image;
-      if (!b.active || !b.getData('onPaddle')) return;
+      if (!b.active || !b.body) return;
+      const stuck = !!b.getData('onPaddle') || this.ballIdleOnPaddleRow(b);
+      if (!stuck) return;
       b.setData('onPaddle', false);
       b.removeData('lastPaddleBounceAt');
       const body = b.body as Phaser.Physics.Arcade.Body;
-      const off = b.getData('paddleOff') as number;
+      let off = b.getData('paddleOff') as number;
+      if (typeof off !== 'number') {
+        off = Phaser.Math.Clamp(b.x - this.paddleHit.x, -this.paddleHalfW + 10, this.paddleHalfW - 10);
+        b.setData('paddleOff', off);
+      }
       const r = body.halfWidth;
-      b.x = this.paddleHit.x + (typeof off === 'number' ? off : 0);
+      b.x = this.paddleHit.x + off;
       b.y = this.paddleTopY() - r - 6;
       const ang = -Math.PI / 2 + Phaser.Math.FloatBetween(-0.38, 0.38);
       body.setVelocity(Math.cos(ang) * sp, Math.sin(ang) * sp);
