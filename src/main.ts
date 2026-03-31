@@ -44,7 +44,7 @@ function createGame() {
         gravity: { y: 0, x: 0 },
         debug: false,
         fps: 60,
-        fixedStep: true,
+        fixedStep: false,
       },
     },
     scene: [PreloadScene, MenuScene, LevelSelectScene, MainGame],

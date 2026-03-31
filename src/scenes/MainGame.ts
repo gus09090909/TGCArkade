@@ -48,7 +48,10 @@ export class MainGame extends Phaser.Scene {
   private bonusGroup!: Phaser.Physics.Arcade.Group;
   private bulletGroup!: Phaser.Physics.Arcade.Group;
 
-  private paddleRoot!: Phaser.GameObjects.Container & { body: Phaser.Physics.Arcade.Body };
+  /** Visual only — physics use `paddleHit` (stable Arkanoid-style collisions). */
+  private paddleRoot!: Phaser.GameObjects.Container;
+  /** Invisible static body; moved horizontally each frame. */
+  private paddleHit!: Phaser.GameObjects.Rectangle;
   private paddleCenterMul = 1;
   private paddleGun = false;
   private gunTimer?: Phaser.Time.TimerEvent;
@@ -223,9 +226,9 @@ export class MainGame extends Phaser.Scene {
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => this.goToMenu());
 
-    this.physics.add.collider(this.ballGroup, this.paddleRoot, this.onBallPaddle, undefined, this);
+    this.physics.add.collider(this.ballGroup, this.paddleHit, this.onBallPaddle, undefined, this);
     this.physics.add.overlap(this.ballGroup, this.blockGroup, this.onBallBlockOverlap, undefined, this);
-    this.physics.add.overlap(this.bonusGroup, this.paddleRoot, this.onBonusPaddle, undefined, this);
+    this.physics.add.overlap(this.bonusGroup, this.paddleHit, this.onBonusPaddle, undefined, this);
     this.physics.add.overlap(this.bulletGroup, this.blockGroup, this.onBulletBlock, undefined, this);
 
     this.input.once('pointerdown', () => this.sound.unlock());
@@ -372,12 +375,14 @@ export class MainGame extends Phaser.Scene {
     const total = lw + cw + rw;
 
     if (!this.paddleRoot) {
-      this.paddleRoot = this.add.container(GAME_WIDTH / 2, y) as typeof this.paddleRoot;
-      this.physics.add.existing(this.paddleRoot, false);
-      const body = this.paddleRoot.body as Phaser.Physics.Arcade.Body;
-      body.setImmovable(true);
-      body.setCollideWorldBounds(false);
+      this.paddleRoot = this.add.container(GAME_WIDTH / 2, y);
       this.paddleRoot.setDepth(25);
+    }
+
+    if (!this.paddleHit) {
+      this.paddleHit = this.add.rectangle(this.paddleRoot.x, y, total, Math.max(14, ch - 2), 0x000000, 0);
+      this.paddleHit.setVisible(false);
+      this.physics.add.existing(this.paddleHit, true);
     }
 
     this.paddleRoot.removeAll(true);
@@ -395,11 +400,15 @@ export class MainGame extends Phaser.Scene {
     this.paddleRoot.setData('barrelL', barrelL);
     this.paddleRoot.setData('barrelR', barrelR);
 
-    const body = this.paddleRoot.body as Phaser.Physics.Arcade.Body;
-    body.setSize(total - 6, Math.max(12, ch - 4));
-    body.setOffset(-total / 2 + 3, -body.height / 2);
+    const hitW = total - 4;
+    const hitH = Math.max(14, Math.min(ch - 2, 22));
+    this.paddleHit.setSize(hitW, hitH);
+    this.paddleHit.setPosition(this.paddleRoot.x, y);
+    const sb = this.paddleHit.body as Phaser.Physics.Arcade.StaticBody;
+    sb.setSize(hitW, hitH);
+    sb.updateFromGameObject();
+
     this.paddleHalfW = total / 2;
-    body.updateFromGameObject();
   }
 
   private setPaddleGun(on: boolean) {
@@ -419,14 +428,17 @@ export class MainGame extends Phaser.Scene {
 
   private movePaddlePointer(worldX: number) {
     const x = Phaser.Math.Clamp(worldX, this.paddleHalfW + 2, GAME_WIDTH - this.paddleHalfW - 2);
-    this.paddleRoot.x = x;
-    (this.paddleRoot.body as Phaser.Physics.Arcade.Body).updateFromGameObject();
+    this.paddleRoot.setPosition(x, PADDLE_Y);
+    this.paddleHit.setPosition(x, PADDLE_Y);
+    (this.paddleHit.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
     this.ballGroup.getChildren().forEach((o) => {
       const b = o as Phaser.Physics.Arcade.Image;
       if (b.getData('onPaddle')) {
         const off = b.getData('paddleOff') as number;
         b.x = x + off;
-        b.y = this.paddleRoot.y - this.paddleRoot.body.height / 2 - b.displayHeight / 2 - 2;
+        const halfHit = this.paddleHit.height / 2;
+        const r = Math.min(b.displayWidth, b.displayHeight) / 2;
+        b.y = PADDLE_Y - halfHit - r - 2;
         (b.body as Phaser.Physics.Arcade.Body).updateFromGameObject();
       }
     });
@@ -487,14 +499,17 @@ export class MainGame extends Phaser.Scene {
     const ball = ballObj as Phaser.Physics.Arcade.Image;
     if (ball.getData('onPaddle')) return;
     const body = ball.body as Phaser.Physics.Arcade.Body;
-    const dx = ball.x - this.paddleRoot.x;
+    const px = this.paddleHit.x;
+    const dx = ball.x - px;
     const max = this.paddleHalfW + ball.displayWidth / 2;
     const n = Phaser.Math.Clamp(dx / max, -1, 1);
-    const speed = Math.hypot(body.velocity.x, body.velocity.y) || this.ballSpeed;
+    const speed = Math.max(this.ballSpeed, Math.hypot(body.velocity.x, body.velocity.y));
     const angle = (n * Math.PI) / 3 - Math.PI / 2;
     body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
-    if (body.velocity.y > 0) body.setVelocityY(-Math.abs(body.velocity.y));
-    this.clampBallMotion(body);
+    if (body.velocity.y >= 0) {
+      body.setVelocityY(-Math.max(120, Math.abs(body.velocity.y)));
+    }
+    this.ensureBallSpeed(body, ball.y);
     this.playSfx('s-paddle');
     if (!this.glue) {
       this.hitSparks.burst(ball.x, ball.y);
@@ -502,13 +517,14 @@ export class MainGame extends Phaser.Scene {
 
     if (this.glue && !this.pausedForUi) {
       ball.setData('onPaddle', true);
-      ball.setData('paddleOff', ball.x - this.paddleRoot.x);
+      ball.setData('paddleOff', ball.x - this.paddleHit.x);
       body.setVelocity(0, 0);
     }
 
     if (this.paddleGun) {
-      this.fireBullet(ball.x - 18, this.paddleRoot.y - 20);
-      this.fireBullet(ball.x + 18, this.paddleRoot.y - 20);
+      const py = this.paddleHit.y - this.paddleHit.height / 2 - 4;
+      this.fireBullet(ball.x - 18, py);
+      this.fireBullet(ball.x + 18, py);
     }
   }
 
@@ -569,7 +585,7 @@ export class MainGame extends Phaser.Scene {
 
     if (!bd.destroyable) {
       this.playBlockHit(true);
-      this.clampBallMotion(body);
+      this.ensureBallSpeed(body, ball.y);
       return;
     }
 
@@ -582,7 +598,7 @@ export class MainGame extends Phaser.Scene {
       block.setTexture(key);
     }
 
-    this.clampBallMotion(body);
+    this.ensureBallSpeed(body, ball.y);
 
     if (bd.hp <= 0) {
       if (bd.primary) this.primaryLeft = Math.max(0, this.primaryLeft - 1);
@@ -602,26 +618,38 @@ export class MainGame extends Phaser.Scene {
     }
   }
 
-  private clampBallMotion(body: Phaser.Physics.Arcade.Body) {
-    const vx = body.velocity.x;
-    const vy = body.velocity.y;
-    const sp = Math.hypot(vx, vy);
-    const minSp = 160;
+  /**
+   * Arcade Y+ is down. Keep |v| ≈ ballSpeed and never leave the ball crawling horizontally
+   * (old clamp pushed vy positive when vy was ~0, so it never climbed).
+   */
+  private ensureBallSpeed(body: Phaser.Physics.Arcade.Body, ballY: number) {
     const target = this.ballSpeed;
-    if (sp < minSp) {
-      const ang =
-        sp < 12
-          ? -Math.PI / 2 + Phaser.Math.FloatBetween(-0.45, 0.45)
-          : Math.atan2(vy || -1, vx || 0.001);
-      body.setVelocity(Math.cos(ang) * target, Math.sin(ang) * target);
+    const minAbsVy = 115;
+    let vx = body.velocity.x;
+    let vy = body.velocity.y;
+    let sp = Math.hypot(vx, vy);
+
+    if (sp < 70) {
+      const a = -Math.PI / 2 + Phaser.Math.FloatBetween(-0.55, 0.55);
+      body.setVelocity(Math.cos(a) * target, Math.sin(a) * target);
       return;
     }
-    if (Math.abs(vy) < 100) {
-      const sign = vy >= 0 ? 1 : -1;
-      const nx = vx;
-      const nyMag = Math.sqrt(Math.max(target * target - nx * nx, 7200));
-      body.setVelocity(nx, sign * nyMag);
+
+    vx = (vx / sp) * target;
+    vy = (vy / sp) * target;
+
+    if (Math.abs(vy) < minAbsVy) {
+      if (ballY > GAME_HEIGHT * 0.3) {
+        vy = -minAbsVy;
+      } else {
+        vy = (vy >= 0 ? 1 : -1) * minAbsVy;
+      }
+      sp = Math.hypot(vx, vy);
+      vx = (vx / sp) * target;
+      vy = (vy / sp) * target;
     }
+
+    body.setVelocity(vx, vy);
   }
 
   private onBonusPaddle(
@@ -797,7 +825,7 @@ export class MainGame extends Phaser.Scene {
       return;
     }
     this.playSfx('s-lost');
-    this.spawnBall(this.paddleRoot.x, this.paddleRoot.y - 24, true, 'normal');
+    this.spawnBallAtPaddle();
     this.hintText.setVisible(true);
   }
 
@@ -995,8 +1023,17 @@ export class MainGame extends Phaser.Scene {
     this.levelStartMs = Date.now();
     this.scoreAtLevelStart = this.score;
     this.livesAtLevelStart = this.lives;
-    this.spawnBall(this.paddleRoot.x, this.paddleRoot.y - 24, true, 'normal');
+    this.spawnBallAtPaddle();
     this.hintText.setVisible(true);
+  }
+
+  /** Ball resting on paddle (Phaser Y+ = down). */
+  private spawnBallAtPaddle() {
+    const x = this.paddleHit.x;
+    const halfHit = this.paddleHit.height / 2;
+    const r = this.ballBaseRadius;
+    const y = PADDLE_Y - halfHit - r - 2;
+    this.spawnBall(x, y, true, 'normal');
   }
 
   private refreshHud() {
@@ -1018,11 +1055,6 @@ export class MainGame extends Phaser.Scene {
     this.hitSparks.update(d);
     this.updateParallaxBackgrounds();
     this.sessionPlayMs += dt;
-
-    this.paddleRoot.setY(PADDLE_Y);
-    const pBody = this.paddleRoot.body as Phaser.Physics.Arcade.Body;
-    pBody.setVelocity(0, 0);
-    pBody.updateFromGameObject();
 
     if (this.speedDial) {
       const ball = this.getPrimaryBall();
