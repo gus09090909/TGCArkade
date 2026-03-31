@@ -226,21 +226,37 @@ export class MainGame extends Phaser.Scene {
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => this.goToMenu());
 
-    /** Overlap only (no Arcade separation) — same idea as classic entityIntersect + setPos + bounce. */
-    this.physics.add.overlap(
+    /** Full collider: Arcade separates ball from static paddle, then we set a predictable upward angle. */
+    this.physics.add.collider(
       this.ballGroup,
       this.paddleHit,
-      this.onBallPaddleOverlap,
-      this.paddleOverlapProcess,
+      (o1, o2) => {
+        const ball = this.ballFromPaddlePair(o1, o2);
+        if (ball?.active && ball.body) this.applyClassicPaddleBounce(ball);
+      },
+      (o1, o2) => this.paddleBallShouldProcess(o1, o2),
       this
     );
     this.physics.add.overlap(this.ballGroup, this.blockGroup, this.onBallBlockOverlap, undefined, this);
     this.physics.add.overlap(this.bonusGroup, this.paddleHit, this.onBonusPaddle, undefined, this);
     this.physics.add.overlap(this.bulletGroup, this.blockGroup, this.onBulletBlock, undefined, this);
 
-    this.input.once('pointerdown', () => this.sound.unlock());
-    this.input.on('pointerdown', () => this.releaseGluedBalls());
-    this.input.on('pointermove', (p: Phaser.Input.Pointer) => this.movePaddlePointer(p.worldX));
+    let audioUnlocked = false;
+    const syncPointerToPaddle = (p: Phaser.Input.Pointer) => {
+      if (this.pausedForUi || this.userPaused || this.overlayPausedPhysics) return;
+      this.movePaddlePointer(p.worldX);
+    };
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (!audioUnlocked) {
+        this.sound.unlock();
+        audioUnlocked = true;
+      }
+      syncPointerToPaddle(p);
+      this.releaseGluedBalls();
+    });
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (p.isDown) syncPointerToPaddle(p);
+    });
 
     this.loadLevel(this.levelIndex);
     this.refreshHud();
@@ -454,30 +470,15 @@ export class MainGame extends Phaser.Scene {
     }
   }
 
-  /**
-   * Classic TGC `ball.js` paddle branch: only resolve when ball is falling (vy > 0),
-   * not glued, and past launch grace. After bounce vy < 0 → overlap stops firing.
-   */
-  private paddleOverlapProcess(
-    a: Phaser.Types.Physics.Arcade.GameObjectWithBody,
-    b: Phaser.Types.Physics.Arcade.GameObjectWithBody
-  ): boolean {
-    const ball = (a === this.paddleHit ? b : a) as Phaser.Physics.Arcade.Image;
+  /** Skip paddle collision while glued / launch grace / ball clearly moving up (Phaser Y+ down). */
+  private paddleBallShouldProcess(obj1: Phaser.GameObjects.GameObject, obj2: Phaser.GameObjects.GameObject): boolean {
+    const ball = this.ballFromPaddlePair(obj1, obj2);
     if (!ball?.active || !ball.body) return false;
     if (ball.getData('onPaddle')) return false;
     const grace = ball.getData('paddleLaunchGrace') as number | undefined;
     if (grace !== undefined && this.time.now < grace) return false;
-    const body = ball.body as Phaser.Physics.Arcade.Body;
-    const vy = body.velocity.y;
-    if (vy < -38) return false;
-    if (vy >= 22) return true;
-    const r = body.halfWidth;
-    const padTop = this.paddleTopY();
-    const padBot = this.paddleHit.y + this.paddleHit.height / 2;
-    const bottom = ball.y + r;
-    const top = ball.y - r;
-    const penetrating = bottom > padTop + 0.5 && top < padBot + r * 0.5;
-    return penetrating;
+    const vy = (ball.body as Phaser.Physics.Arcade.Body).velocity.y;
+    return vy > -18;
   }
 
   /** Top edge of paddle hitbox (world Y). */
@@ -499,28 +500,28 @@ export class MainGame extends Phaser.Scene {
   }
 
   /**
-   * Legacy `ball.bounce(paddle)`: normX from hit position, speeds aim upward (Phaser Y+ down).
+   * Arkanoid-style deflection: hit position 0..1 on paddle → angle about vertical (not sin([-1,1]) as radians).
    */
   private applyClassicPaddleBounce(ball: Phaser.Physics.Arcade.Image) {
     const last = ball.getData('lastPaddleBounceAt') as number | undefined;
-    if (last !== undefined && this.time.now - last < 36) return;
+    if (last !== undefined && this.time.now - last < 42) return;
     ball.setData('lastPaddleBounceAt', this.time.now);
 
     const body = ball.body as Phaser.Physics.Arcade.Body;
     const r = body.halfWidth;
     const padTop = this.paddleTopY();
-    ball.y = padTop - r - 8;
+    ball.y = padTop - r - 6;
     body.updateFromGameObject();
 
     const paddleLeft = this.paddleHit.x - this.paddleHit.width / 2;
-    const t = Phaser.Math.Clamp((ball.x - paddleLeft) / this.paddleHit.width, 0, 1);
-    const normX = 1 - 2 * t;
-    const speed = Math.max(this.ballSpeed, Math.hypot(body.velocity.x, body.velocity.y));
-    let vx = -Math.sin(normX) * speed;
-    let vy = -Math.cos(normX) * speed;
-    if (vy > -120) vy = -this.ballSpeed * 0.92;
+    const w = Math.max(1, this.paddleHit.width);
+    const hit = Phaser.Math.Clamp((ball.x - paddleLeft) / w, 0, 1);
+    const maxLean = Math.PI * 0.7;
+    const delta = (hit - 0.5) * 2 * maxLean;
+    const sp = this.ballSpeed;
+    const vx = Math.sin(delta) * sp;
+    const vy = -Math.abs(Math.cos(delta)) * sp;
     body.setVelocity(vx, vy);
-    this.ensureBallSpeed(body, ball.y);
 
     this.playSfx('s-paddle');
     if (!this.glue) {
@@ -544,15 +545,6 @@ export class MainGame extends Phaser.Scene {
       this.fireBullet(ball.x - 18, py);
       this.fireBullet(ball.x + 18, py);
     }
-  }
-
-  private onBallPaddleOverlap(
-    obj1: Phaser.GameObjects.GameObject,
-    obj2: Phaser.GameObjects.GameObject
-  ) {
-    const ball = this.ballFromPaddlePair(obj1, obj2);
-    if (!ball?.active || !ball.body) return;
-    this.applyClassicPaddleBounce(ball);
   }
 
   private movePaddlePointer(worldX: number) {
@@ -719,13 +711,13 @@ export class MainGame extends Phaser.Scene {
    */
   private ensureBallSpeed(body: Phaser.Physics.Arcade.Body, ballY: number) {
     const target = this.ballSpeed;
-    const minAbsVy = 115;
+    const minAbsVy = 72;
     let vx = body.velocity.x;
     let vy = body.velocity.y;
     let sp = Math.hypot(vx, vy);
 
-    if (sp < 70) {
-      const a = -Math.PI / 2 + Phaser.Math.FloatBetween(-0.55, 0.55);
+    if (sp < 55) {
+      const a = -Math.PI / 2 + Phaser.Math.FloatBetween(-0.45, 0.45);
       body.setVelocity(Math.cos(a) * target, Math.sin(a) * target);
       return;
     }
@@ -734,7 +726,7 @@ export class MainGame extends Phaser.Scene {
     vy = (vy / sp) * target;
 
     if (Math.abs(vy) < minAbsVy) {
-      if (ballY > GAME_HEIGHT * 0.3) {
+      if (ballY > GAME_HEIGHT * 0.28) {
         vy = -minAbsVy;
       } else {
         vy = (vy >= 0 ? 1 : -1) * minAbsVy;
@@ -756,10 +748,11 @@ export class MainGame extends Phaser.Scene {
   private collectBonus(bonus: Phaser.Physics.Arcade.Image | null) {
     if (!bonus?.active || !bonus.body) return;
     if (bonus.getData('picked')) return;
-    if (bonus.getData('typeId') === undefined) return;
+    const typeIdRaw = bonus.getData('typeId');
+    if (typeof typeIdRaw !== 'number') return;
     bonus.setData('picked', true);
 
-    const typeId = bonus.getData('typeId') as number;
+    const typeId = typeIdRaw;
     const def = BONUS_TYPES[typeId];
     if (!def) {
       bonus.destroy();
@@ -1210,6 +1203,11 @@ export class MainGame extends Phaser.Scene {
     }
     if (this.pausedForUi) return;
     if (this.userPaused) return;
+
+    const ap = this.input.activePointer;
+    if (ap.isDown && !this.overlayPausedPhysics) {
+      this.movePaddlePointer(ap.worldX);
+    }
 
     const d = dt / 1000;
 
