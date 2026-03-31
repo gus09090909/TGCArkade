@@ -887,21 +887,44 @@ export class MainGame extends Phaser.Scene {
     this.collectBonus(bonus);
   }
 
-  /** Single path for pickup (physics overlap + manual sweep so fast drops never pass through). */
+  /**
+   * Never destroy the bonus or mutate heavy state inside overlap / forEach: that corrupts Arcade's
+   * internal lists and can freeze the game. We disable the body immediately, then run effects + destroy
+   * on the next tick.
+   */
   private collectBonus(bonus: Phaser.Physics.Arcade.Image | null) {
     if (!bonus?.active || !bonus.body) return;
     if (bonus.getData('picked')) return;
     const typeIdRaw = bonus.getData('typeId');
     if (typeof typeIdRaw !== 'number') return;
-    bonus.setData('picked', true);
 
-    const typeId = typeIdRaw;
-    const def = BONUS_TYPES[typeId];
-    if (!def) {
-      bonus.destroy();
+    const defPre = BONUS_TYPES[typeIdRaw];
+    if (!defPre) {
+      this.time.delayedCall(0, () => {
+        if (bonus.active) bonus.destroy();
+      });
       return;
     }
-    this.spawnBonusPickupLabel(bonus.x, bonus.y, def);
+
+    bonus.setData('picked', true);
+    (bonus.body as Phaser.Physics.Arcade.Body).enable = false;
+    bonus.setVisible(false);
+
+    const typeId = typeIdRaw;
+    const lx = bonus.x;
+    const ly = bonus.y;
+
+    this.time.delayedCall(0, () => {
+      this.applyBonusPickupContent(typeId, lx, ly);
+      if (bonus.active) bonus.destroy();
+      this.refreshHud();
+    });
+  }
+
+  private applyBonusPickupContent(typeId: number, labelX: number, labelY: number) {
+    const def = BONUS_TYPES[typeId];
+    if (!def) return;
+    this.spawnBonusPickupLabel(labelX, labelY, def);
     this.playSfx('s-bonus');
     if (def.score > 0) this.score += def.score;
     else this.score = Math.max(0, this.score + def.score);
@@ -965,9 +988,6 @@ export class MainGame extends Phaser.Scene {
     } else if (name === 'laser' || name === 'gun') {
       this.setPaddleGun(true);
     }
-
-    bonus.destroy();
-    this.refreshHud();
   }
 
   /** Pickup sweep only after the item has moved into the lower playfield (avoids instant grab at spawn). */
@@ -977,14 +997,18 @@ export class MainGame extends Phaser.Scene {
     const hw = this.paddleHit.width / 2 + 36;
     const padTop = this.paddleTopY();
     const padBot = py + this.paddleHit.height / 2 + 14;
+    const hits: Phaser.Physics.Arcade.Image[] = [];
     this.bonusGroup.getChildren().forEach((o) => {
       const b = o as Phaser.Physics.Arcade.Image;
-      if (!b.active) return;
+      if (!b.active || b.getData('picked')) return;
       if (b.y < GAME_HEIGHT * 0.22) return;
       if (Math.abs(b.x - px) > hw) return;
       if (b.y < padTop - 22 || b.y > padBot + 22) return;
-      this.collectBonus(b);
+      hits.push(b);
     });
+    for (const b of hits) {
+      this.collectBonus(b);
+    }
   }
 
   private forEachActiveBall(fn: (b: Phaser.Physics.Arcade.Image) => void) {
