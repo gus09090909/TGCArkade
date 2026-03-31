@@ -226,15 +226,15 @@ export class MainGame extends Phaser.Scene {
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', () => this.goToMenu());
 
-    /** Full collider: Arcade separates ball from static paddle, then we set a predictable upward angle. */
-    this.physics.add.collider(
+    /** Overlap + manual bounce only — collider + bounce(1) on the ball fought Arcade and felt random. */
+    this.physics.add.overlap(
       this.ballGroup,
       this.paddleHit,
       (o1, o2) => {
         const ball = this.ballFromPaddlePair(o1, o2);
         if (ball?.active && ball.body) this.applyClassicPaddleBounce(ball);
       },
-      (o1, o2) => this.paddleBallShouldProcess(o1, o2),
+      (a, b) => this.paddleBallOverlapProcess(a, b),
       this
     );
     this.physics.add.overlap(this.ballGroup, this.blockGroup, this.onBallBlockOverlap, undefined, this);
@@ -244,7 +244,8 @@ export class MainGame extends Phaser.Scene {
     let audioUnlocked = false;
     const syncPointerToPaddle = (p: Phaser.Input.Pointer) => {
       if (this.pausedForUi || this.userPaused || this.overlayPausedPhysics) return;
-      this.movePaddlePointer(p.worldX);
+      const wx = this.cameras.main.getWorldPoint(p.x, p.y).x;
+      this.movePaddlePointer(wx);
     };
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (!audioUnlocked) {
@@ -411,12 +412,13 @@ export class MainGame extends Phaser.Scene {
     this.paddleRoot.removeAll(true);
     this.paddleRoot.setY(y);
 
-    const left = this.add.image(0, 0, 'pad-left').setOrigin(0, 0.5);
-    const center = this.add.image(lw, 0, 'pad-center').setOrigin(0, 0.5).setDisplaySize(cw, ch);
-    const right = this.add.image(lw + cw, 0, 'pad-right').setOrigin(0, 0.5);
-    const barrelL = this.add.image(lw * 0.2, -4, 'pad-barrel').setOrigin(0.5, 0.5).setVisible(this.paddleGun);
+    const ox = -total / 2;
+    const left = this.add.image(ox, 0, 'pad-left').setOrigin(0, 0.5);
+    const center = this.add.image(ox + lw, 0, 'pad-center').setOrigin(0, 0.5).setDisplaySize(cw, ch);
+    const right = this.add.image(ox + lw + cw, 0, 'pad-right').setOrigin(0, 0.5);
+    const barrelL = this.add.image(ox + lw * 0.2, -4, 'pad-barrel').setOrigin(0.5, 0.5).setVisible(this.paddleGun);
     const barrelR = this.add
-      .image(lw + cw + rw - lw * 0.2, -4, 'pad-barrel')
+      .image(ox + lw + cw + rw - lw * 0.2, -4, 'pad-barrel')
       .setOrigin(0.5, 0.5)
       .setVisible(this.paddleGun);
     this.paddleRoot.add([left, center, right, barrelL, barrelR]);
@@ -470,15 +472,19 @@ export class MainGame extends Phaser.Scene {
     }
   }
 
-  /** Skip paddle collision while glued / launch grace / ball clearly moving up (Phaser Y+ down). */
-  private paddleBallShouldProcess(obj1: Phaser.GameObjects.GameObject, obj2: Phaser.GameObjects.GameObject): boolean {
-    const ball = this.ballFromPaddlePair(obj1, obj2);
+  private paddleBallOverlapProcess(
+    a: Phaser.Types.Physics.Arcade.GameObjectWithBody,
+    b: Phaser.Types.Physics.Arcade.GameObjectWithBody
+  ): boolean {
+    const ball = (a === this.paddleHit ? b : a) as Phaser.Physics.Arcade.Image;
     if (!ball?.active || !ball.body) return false;
     if (ball.getData('onPaddle')) return false;
     const grace = ball.getData('paddleLaunchGrace') as number | undefined;
     if (grace !== undefined && this.time.now < grace) return false;
     const vy = (ball.body as Phaser.Physics.Arcade.Body).velocity.y;
-    return vy > -18;
+    if (vy < -24) return false;
+    const r = (ball.body as Phaser.Physics.Arcade.Body).halfWidth;
+    return vy > 8 || ball.y + r > this.paddleTopY() - 2;
   }
 
   /** Top edge of paddle hitbox (world Y). */
@@ -550,6 +556,7 @@ export class MainGame extends Phaser.Scene {
   private movePaddlePointer(worldX: number) {
     const half = this.paddleHalfW;
     const x = Phaser.Math.Clamp(worldX, half, GAME_WIDTH - half);
+    if (!Number.isFinite(x)) return;
     this.paddleRoot.setPosition(x, PADDLE_Y);
     this.paddleHit.setPosition(x, PADDLE_Y);
     (this.paddleHit.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
@@ -572,7 +579,7 @@ export class MainGame extends Phaser.Scene {
     this.applyBallSize(ball, size);
     const body = ball.body as Phaser.Physics.Arcade.Body;
     body.setBounce(1, 1);
-    body.setMaxVelocity(560, 560);
+    body.setMaxVelocity(520, 520);
     body.setCollideWorldBounds(true);
     ball.setData('size', size);
     ball.setData('steel', false);
@@ -825,18 +832,19 @@ export class MainGame extends Phaser.Scene {
     this.refreshHud();
   }
 
-  /** Axis-aligned pickup band (generous): catches tunneling and thin bodies. */
+  /** Pickup sweep only after the item has moved into the lower playfield (avoids instant grab at spawn). */
   private sweepBonusPickupVsPaddle() {
     const px = this.paddleHit.x;
     const py = this.paddleHit.y;
-    const hw = this.paddleHit.width / 2 + 18;
+    const hw = this.paddleHit.width / 2 + 20;
     const padTop = this.paddleTopY();
-    const padBot = py + this.paddleHit.height / 2 + 6;
+    const padBot = py + this.paddleHit.height / 2 + 8;
     this.bonusGroup.getChildren().forEach((o) => {
       const b = o as Phaser.Physics.Arcade.Image;
       if (!b.active) return;
+      if (b.y < GAME_HEIGHT * 0.42) return;
       if (Math.abs(b.x - px) > hw) return;
-      if (b.y < padTop - 20 || b.y > padBot + 14) return;
+      if (b.y < padTop - 12 || b.y > padBot + 16) return;
       this.collectBonus(b);
     });
   }
@@ -941,8 +949,9 @@ export class MainGame extends Phaser.Scene {
     b.setDepth(18);
     const body = b.body as Phaser.Physics.Arcade.Body;
     body.setAllowGravity(false);
+    body.setVelocity(0, 0);
     b.setData('typeId', typeId);
-    body.setVelocity(0, 132);
+    b.setData('bonusKinematic', true);
     this.bonusGroup.add(b);
   }
 
@@ -1206,7 +1215,8 @@ export class MainGame extends Phaser.Scene {
 
     const ap = this.input.activePointer;
     if (ap.isDown && !this.overlayPausedPhysics) {
-      this.movePaddlePointer(ap.worldX);
+      const wx = this.cameras.main.getWorldPoint(ap.x, ap.y).x;
+      this.movePaddlePointer(wx);
     }
 
     const d = dt / 1000;
@@ -1247,6 +1257,16 @@ export class MainGame extends Phaser.Scene {
       }
     });
 
+    this.bonusGroup.getChildren().forEach((o) => {
+      const b = o as Phaser.Physics.Arcade.Image;
+      if (!b.active || b.getData('picked')) return;
+      if (b.getData('bonusKinematic')) {
+        b.y += 152 * d;
+        const bd = b.body as Phaser.Physics.Arcade.Body;
+        bd.setVelocity(0, 0);
+        bd.updateFromGameObject();
+      }
+    });
     this.sweepBonusPickupVsPaddle();
     this.bonusGroup.getChildren().forEach((o) => {
       const b = o as Phaser.Physics.Arcade.Image;
