@@ -67,10 +67,9 @@ export class MainGame extends Phaser.Scene {
    * Speed magnitude (px/s), aligned with original `speedStep * 1.5` feel from
    * https://github.com/gus09090909/TGC-Arkade/blob/master/js/app/entity/ball.js
    */
-  private readonly ballSpeedMax = 360;
-  private readonly ballSpeedStart = 228;
-  /** Target |v| after each speed bump (original bumps ~0.05 * ratio per hit). */
-  private ballSpeedCurrent = 228;
+  private readonly ballSpeedMax = 310;
+  private readonly ballSpeedStart = 200;
+  private ballSpeedCurrent = 200;
   private scoreText!: Phaser.GameObjects.Text;
   private livesText!: Phaser.GameObjects.Text;
   private levelText!: Phaser.GameObjects.Text;
@@ -136,6 +135,7 @@ export class MainGame extends Phaser.Scene {
     this.paddleCenterMul = 1;
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.events.off(Phaser.Scenes.Events.POST_UPDATE, this.applyManualBallWalls, this);
       this.overlayPausedPhysics = false;
       this.glueExpireTimer?.remove(false);
       try {
@@ -185,7 +185,7 @@ export class MainGame extends Phaser.Scene {
     }
 
     this.blockGroup = this.physics.add.staticGroup();
-    this.ballGroup = this.physics.add.group({ collideWorldBounds: true });
+    this.ballGroup = this.physics.add.group({ collideWorldBounds: false });
     this.bonusGroup = this.physics.add.group();
     this.bulletGroup = this.physics.add.group();
     this.hitSparks = new HitSparkPool(this, 17);
@@ -300,6 +300,8 @@ export class MainGame extends Phaser.Scene {
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       syncPointerToPaddle(p);
     });
+
+    this.events.on(Phaser.Scenes.Events.POST_UPDATE, this.applyManualBallWalls, this);
 
     this.loadLevel(this.levelIndex);
     this.refreshHud();
@@ -530,7 +532,7 @@ export class MainGame extends Phaser.Scene {
     const grace = ball.getData('paddleLaunchGrace') as number | undefined;
     if (grace !== undefined && this.time.now < grace) return false;
     const vy = (ball.body as Phaser.Physics.Arcade.Body).velocity.y;
-    if (vy < -24) return false;
+    if (vy < -140) return false;
     const r = (ball.body as Phaser.Physics.Arcade.Body).halfWidth;
     return vy > 8 || ball.y + r > this.paddleTopY() - 2;
   }
@@ -646,16 +648,16 @@ export class MainGame extends Phaser.Scene {
     ball.setDepth(20);
     this.applyBallSize(ball, size);
     const body = ball.body as Phaser.Physics.Arcade.Body;
-    body.setBounce(1, 1);
-    body.setMaxVelocity(this.ballSpeedMax + 40, this.ballSpeedMax + 40);
-    body.setCollideWorldBounds(true);
+    body.setBounce(0, 0);
+    body.setMaxVelocity(this.ballSpeedMax + 80, this.ballSpeedMax + 80);
+    body.setCollideWorldBounds(false);
     ball.setData('size', size);
     ball.setData('steel', false);
     ball.setData('onPaddle', onPaddle);
     if (onPaddle) {
       ball.setData('paddleOff', (this.ballGroup.getLength() % 3 - 1) * 14);
       body.setVelocity(0, 0);
-      ball.setData('paddleLaunchGrace', this.time.now + 480);
+      ball.setData('paddleLaunchGrace', this.time.now + 620);
     }
     this.ballGroup.add(ball);
     attachBallTrail(this, ball);
@@ -805,7 +807,7 @@ export class MainGame extends Phaser.Scene {
     vy = (vy / sp) * target;
 
     if (nudgeNearHorizontal) {
-      const minAbsVy = target * 0.17;
+      const minAbsVy = target * 0.12;
       if (Math.abs(vy) < minAbsVy) {
         const signY = Math.sign(vy) || Phaser.Math.RND.pick([-1, 1]);
         vy = signY * minAbsVy;
@@ -816,6 +818,51 @@ export class MainGame extends Phaser.Scene {
     }
 
     body.setVelocity(vx, vy);
+  }
+
+  /**
+   * Arcade world bounce + our rescale fought each other. Original game flips components on walls;
+   * we do the same here after the physics step (no engine wall collision on the ball).
+   */
+  private applyManualBallWalls() {
+    if (this.pausedForUi || this.userPaused) return;
+
+    this.ballGroup.getChildren().forEach((o) => {
+      const ball = o as Phaser.Physics.Arcade.Image;
+      if (!ball.active || ball.getData('onPaddle')) return;
+      const body = ball.body as Phaser.Physics.Arcade.Body;
+      const r = body.halfWidth;
+      const eps = 0.75;
+
+      const touchL = ball.x - r <= eps;
+      const touchR = ball.x + r >= GAME_WIDTH - eps;
+      const touchT = ball.y - r <= eps;
+      const prev = (ball.getData('wallTouch') as { l?: boolean; r?: boolean; t?: boolean }) || {};
+
+      if (touchL) {
+        ball.x = r + eps;
+        body.velocity.x = Math.abs(body.velocity.x);
+      }
+      if (touchR) {
+        ball.x = GAME_WIDTH - r - eps;
+        body.velocity.x = -Math.abs(body.velocity.x);
+      }
+      if (touchT) {
+        ball.y = r + eps;
+        body.velocity.y = Math.abs(body.velocity.y);
+      }
+
+      const newEdges =
+        (touchL && !prev.l ? 1 : 0) + (touchR && !prev.r ? 1 : 0) + (touchT && !prev.t ? 1 : 0);
+      if (newEdges > 0) {
+        this.playSfx('s-wall');
+        this.bumpBallSpeed(1.35 * Math.min(newEdges, 2));
+        this.normalizeBallSpeed(body, false);
+      }
+
+      ball.setData('wallTouch', { l: touchL, r: touchR, t: touchT });
+      body.updateFromGameObject();
+    });
   }
 
   private onBonusPaddle(obj1: Phaser.GameObjects.GameObject, obj2: Phaser.GameObjects.GameObject) {
@@ -1044,7 +1091,7 @@ export class MainGame extends Phaser.Scene {
       b.y = this.paddleTopY() - r - 6;
       const ang = -Math.PI / 2 + Phaser.Math.FloatBetween(-0.38, 0.38);
       body.setVelocity(Math.cos(ang) * sp, Math.sin(ang) * sp);
-      b.setData('paddleLaunchGrace', this.time.now + 360);
+      b.setData('paddleLaunchGrace', this.time.now + 500);
       body.updateFromGameObject();
     });
     this.hintText.setVisible(this.ballGroup.getLength() === 0);
@@ -1275,7 +1322,7 @@ export class MainGame extends Phaser.Scene {
     const br = body.halfWidth;
     ball.y = PADDLE_Y - halfHit - br - 6;
     body.updateFromGameObject();
-    ball.setData('paddleLaunchGrace', this.time.now + 480);
+    ball.setData('paddleLaunchGrace', this.time.now + 620);
   }
 
   private refreshHud() {
@@ -1321,22 +1368,6 @@ export class MainGame extends Phaser.Scene {
       const ball = o as Phaser.Physics.Arcade.Image;
       if (!ball.active) return;
       updateBallTrail(ball);
-      if (ball.getData('onPaddle')) return;
-      const body = ball.body as Phaser.Physics.Arcade.Body;
-      const blocked = body.blocked;
-      const prevU = !!ball.getData('wallU');
-      const prevL = !!ball.getData('wallL');
-      const prevR = !!ball.getData('wallR');
-      const newWallHit =
-        (blocked.up && !prevU) || (blocked.left && !prevL) || (blocked.right && !prevR);
-      if (newWallHit) {
-        this.playSfx('s-wall');
-        this.bumpBallSpeed(1.6);
-        this.normalizeBallSpeed(body, false);
-      }
-      ball.setData('wallU', blocked.up);
-      ball.setData('wallL', blocked.left);
-      ball.setData('wallR', blocked.right);
     });
 
     this.bonusGroup.getChildren().forEach((o) => {
