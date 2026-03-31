@@ -9,6 +9,11 @@ import {
   type Profile,
 } from '../api/tgcCloud';
 import { SPACE_LEVEL_STRINGS } from '../data/spaceLevels';
+import {
+  ACHIEVEMENT_DEFS,
+  getLocalUnlockedIds,
+  mergeServerAchievementIds,
+} from '../game/achievements';
 
 export type OverlayBridge = {
   getMaxUnlockedLevel: () => number;
@@ -55,7 +60,7 @@ export function initTgcOverlayDom() {
   const tabLb = $('tgc-tab-leaderboard');
   const tabAch = $('tgc-tab-achievements');
   const achStatus = $('tgc-ach-status');
-  const achList = $('tgc-ach-list');
+  const achGrid = $('tgc-ach-grid');
   const input = $('tgc-username') as HTMLInputElement;
   const msg = $('tgc-profile-msg');
   const statsEl = $('tgc-profile-stats');
@@ -95,18 +100,6 @@ export function initTgcOverlayDom() {
     }
   }
 
-  function formatAchievementsBody(p: Profile): string {
-    const a = p.achievements;
-    const keys = a && typeof a === 'object' ? Object.keys(a) : [];
-    if (!keys.length) {
-      return 'No achievement entries on the server for this profile yet.\n\nThe API supports achievements; the game can report unlocks when you sync your profile.';
-    }
-    return keys
-      .sort((x, y) => x.localeCompare(y))
-      .map((k) => `${k}: ${a![k]}`)
-      .join('\n');
-  }
-
   function formatProfile(p: Profile): string {
     const s = p.stats;
     const achN = p.achievements && typeof p.achievements === 'object' ? Object.keys(p.achievements).length : 0;
@@ -120,25 +113,57 @@ export function initTgcOverlayDom() {
     ].join('\n');
   }
 
+  function renderAchievementCards(remote: Record<string, number> | undefined) {
+    achGrid.innerHTML = '';
+    const remoteKeys = remote && typeof remote === 'object' ? new Set(Object.keys(remote)) : new Set<string>();
+    const local = getLocalUnlockedIds();
+    for (const def of ACHIEVEMENT_DEFS) {
+      const unlocked = local.has(def.id) || remoteKeys.has(def.id);
+      const card = document.createElement('div');
+      card.className = 'tgc-ach-card' + (unlocked ? ' tgc-ach-unlocked' : ' tgc-ach-locked');
+      const icon = document.createElement('div');
+      icon.className = 'tgc-ach-icon';
+      icon.textContent = unlocked ? '★' : '☆';
+      const body = document.createElement('div');
+      body.className = 'tgc-ach-body';
+      const t = document.createElement('div');
+      t.className = 'tgc-ach-title';
+      t.textContent = def.title;
+      const d = document.createElement('div');
+      d.className = 'tgc-ach-desc';
+      d.textContent = def.description;
+      body.appendChild(t);
+      body.appendChild(d);
+      card.appendChild(icon);
+      card.appendChild(body);
+      achGrid.appendChild(card);
+    }
+  }
+
   async function loadAchievementsPanel() {
     achStatus.textContent = 'Loading…';
-    achList.textContent = '';
+    achGrid.innerHTML = '';
     const name = getStoredUsername();
     if (name.length < 2) {
-      achStatus.textContent = 'Set a player name under Profile, then Save & sync.';
+      achStatus.textContent = 'Set a player name on the welcome screen or under Profile.';
+      renderAchievementCards(undefined);
       return;
     }
     const p = await fetchProfile(name);
     if (p === false) {
       achStatus.textContent = 'No cloud profile yet — use Profile → Save & sync.';
+      renderAchievementCards(undefined);
       return;
     }
     if (p === null) {
-      achStatus.textContent = 'Could not reach API.';
+      achStatus.textContent = 'Could not reach API — showing local unlocks only.';
+      mergeServerAchievementIds(undefined);
+      renderAchievementCards(undefined);
       return;
     }
+    mergeServerAchievementIds(p.achievements);
     achStatus.textContent = '';
-    achList.textContent = formatAchievementsBody(p);
+    renderAchievementCards(p.achievements);
   }
 
   async function saveProfile() {
@@ -155,12 +180,15 @@ export function initTgcOverlayDom() {
     }
     setStoredUsername(name);
     const localMax = ctx.getMaxUnlockedLevel();
+    const ach: Record<string, number> = {};
+    for (const id of getLocalUnlockedIds()) ach[id] = Math.floor(Date.now() / 1000);
     const merged: Partial<Profile> = {
       maxUnlockedLevelIndex: Math.max(reg.maxUnlockedLevelIndex | 0, localMax),
       stats: {
         ...reg.stats,
         highScore: Math.max(reg.stats.highScore | 0, getLocalHighScore()),
       },
+      achievements: Object.keys(ach).length ? ach : undefined,
     };
     const put = await pushProfile(name, merged);
     if (!put) {
@@ -187,6 +215,7 @@ export function initTgcOverlayDom() {
     } else if (p === null) {
       statsEl.textContent = 'Could not reach API.';
     } else {
+      mergeServerAchievementIds(p.achievements);
       statsEl.textContent = formatProfile(p);
     }
   }

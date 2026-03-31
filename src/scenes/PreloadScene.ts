@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { IMG, SND } from '../game/assetBase';
 import { uiStyle } from '../game/uiFonts';
+import { runWelcomeFlow } from '../ui/welcomeGate';
 import { BONUS_TYPES, bonusTextureFolder } from '../game/bonusesData';
 import { BLOCK_DEFS } from '../game/blockRegistry';
 
@@ -122,6 +123,6 @@ export class PreloadScene extends Phaser.Scene {
         repeat: -1,
       });
     }
-    this.scene.start('MenuScene');
+    runWelcomeFlow(this);
   }
 }

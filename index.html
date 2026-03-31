@@ -160,17 +160,131 @@
       #tgc-overlay button {
         font-family: "VT323", system-ui, sans-serif;
       }
+      #tgc-welcome {
+        position: fixed;
+        inset: 0;
+        z-index: 2000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        box-sizing: border-box;
+        background: rgba(5, 8, 18, 0.92);
+      }
+      #tgc-welcome .tgc-welcome-panel {
+        width: min(400px, 100%);
+        background: linear-gradient(165deg, #1a2332 0%, #0f1419 100%);
+        border: 1px solid rgba(144, 202, 249, 0.3);
+        border-radius: 12px;
+        padding: 22px;
+        color: #eceff1;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+      }
+      #tgc-welcome h2 {
+        margin: 0 0 8px;
+        font-size: 22px;
+        font-family: "VT323", monospace;
+      }
+      #tgc-welcome p {
+        margin: 0 0 14px;
+        font-size: 16px;
+        color: #90a4ae;
+        line-height: 1.4;
+      }
+      #tgc-welcome-name {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(0, 0, 0, 0.4);
+        color: #fff;
+        font-size: 18px;
+        font-family: "VT323", monospace;
+        margin-bottom: 12px;
+      }
+      #tgc-welcome-go {
+        width: 100%;
+        padding: 11px;
+        border: none;
+        border-radius: 8px;
+        background: #5c6bc0;
+        color: #fff;
+        font-size: 18px;
+        font-family: "VT323", monospace;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      #tgc-welcome-go:hover {
+        background: #6f7dd2;
+      }
+      #tgc-welcome-err {
+        min-height: 1.2em;
+        font-size: 15px;
+        color: #ffb74d;
+        margin-top: 8px;
+      }
+      #tgc-ach-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-height: 280px;
+        overflow: auto;
+        margin-top: 8px;
+      }
+      .tgc-ach-card {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(144, 202, 249, 0.15);
+        background: rgba(0, 0, 0, 0.22);
+      }
+      .tgc-ach-card.tgc-ach-locked {
+        opacity: 0.55;
+      }
+      .tgc-ach-icon {
+        font-size: 22px;
+        line-height: 1;
+        color: #ffd54f;
+        flex-shrink: 0;
+      }
+      .tgc-ach-locked .tgc-ach-icon {
+        color: #546e7a;
+      }
+      .tgc-ach-title {
+        font-size: 17px;
+        color: #eceff1;
+        font-weight: 600;
+      }
+      .tgc-ach-desc {
+        font-size: 14px;
+        color: #90a4ae;
+        margin-top: 2px;
+        line-height: 1.35;
+      }
     </style>
   </head>
   <body oncontextmenu="return false;">
     <div id="game-root"></div>
 
+    <div id="tgc-welcome" class="tgc-hidden" aria-hidden="true">
+      <div class="tgc-welcome-panel">
+        <h2>Welcome to TGC Arkade</h2>
+        <p>Choose a player name (2–32 characters). It is used for cloud profile, leaderboard, and achievements.</p>
+        <input id="tgc-welcome-name" type="text" maxlength="32" autocomplete="username" placeholder="Your name" />
+        <button type="button" id="tgc-welcome-go">Continue</button>
+        <p id="tgc-welcome-err"></p>
+      </div>
+    </div>
+
     <div id="tgc-overlay" class="tgc-hidden" aria-hidden="true">
       <div class="tgc-backdrop" aria-hidden="true"></div>
       <div class="tgc-panel" role="dialog" aria-labelledby="tgc-dialog-title">
         <button type="button" id="tgc-close" class="tgc-close" aria-label="Close">×</button>
-        <h2 id="tgc-dialog-title" style="margin: 0 0 4px; font-size: 18px; font-weight: 600">Player</h2>
-        <p style="margin: 0 0 12px; font-size: 12px; color: #78909c">Cloud sync uses the same API as the classic TGC-Arkade server.</p>
+        <h2 id="tgc-dialog-title" style="margin: 0 0 4px; font-size: 20px; font-weight: 600">Player hub</h2>
+        <p style="margin: 0 0 12px; font-size: 14px; color: #90a4ae; line-height: 1.45">Profile, cloud sync, leaderboard, and achievements. Same API contract as the classic TGC-Arkade server.</p>
         <nav class="tgc-tabs">
           <button type="button" data-tab="profile" class="tgc-active">Profile</button>
           <button type="button" data-tab="leaderboard">Leaderboard</button>
@@ -189,7 +303,7 @@
         </div>
         <div id="tgc-tab-achievements" class="tgc-tab tgc-hidden">
           <p id="tgc-ach-status" class="tgc-msg"></p>
-          <pre id="tgc-ach-list" class="tgc-stats" style="max-height: 220px"></pre>
+          <div id="tgc-ach-grid"></div>
         </div>
       </div>
     </div>

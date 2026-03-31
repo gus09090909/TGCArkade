@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import { particleTextureKey, type TailSize } from '../particleKeys';
 
-const TRAIL_COUNT = 18;
-const ALPHA_STEP = 0.028;
+const TRAIL_COUNT = 10;
+const ALPHA_STEP = 0.038;
 const POS_JITTER = 2;
 
 type TrailData = {
@@ -45,8 +45,9 @@ export function attachBallTrail(scene: Phaser.Scene, ball: Phaser.Physics.Arcade
     const im = scene.add.image(-9999, -9999, scene.textures.exists(key) ? key : 'ball-normal');
     im.setDepth(19);
     const a = i * ALPHA_STEP;
-    im.setAlpha(a);
-    im.setData('trailBaseAlpha', a);
+    const capped = Math.min(a, 0.32);
+    im.setAlpha(capped);
+    im.setData('trailBaseAlpha', capped);
     const base = Math.min(im.width, im.height);
     im.setDisplaySize(base * 0.42, base * 0.42);
     im.setVisible(false);

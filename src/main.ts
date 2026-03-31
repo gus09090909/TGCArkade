@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { PreloadScene } from './scenes/PreloadScene';
 import { MenuScene } from './scenes/MenuScene';
 import { MainGame } from './scenes/MainGame';
+import { LevelSelectScene } from './scenes/LevelSelectScene';
 import { GAME_HEIGHT, GAME_WIDTH } from './game/constants';
 import { initTgcOverlayDom } from './ui/tgcOverlay';
 
@@ -37,18 +38,28 @@ function createGame() {
       arcade: {
         gravity: { y: 0, x: 0 },
         debug: false,
-        fixedStep: false,
+        fps: 60,
+        fixedStep: true,
       },
     },
-    scene: [PreloadScene, MenuScene, MainGame],
+    scene: [PreloadScene, MenuScene, LevelSelectScene, MainGame],
   });
 }
 
+let gameRef: Phaser.Game | null = null;
+
 /** Match classic: wait for VT323 / Press Start 2P before drawing UI text. */
-if (document.fonts?.ready) {
-  void document.fonts.ready.then(() => {
-    createGame();
+function boot() {
+  gameRef = createGame();
+  const unlock = () => gameRef?.sound.unlock();
+  document.body.addEventListener('pointerdown', unlock, { passive: true });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') unlock();
   });
+}
+
+if (document.fonts?.ready) {
+  void document.fonts.ready.then(boot);
 } else {
-  createGame();
+  boot();
 }

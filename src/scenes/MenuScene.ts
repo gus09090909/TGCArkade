@@ -67,7 +67,7 @@ export class MenuScene extends Phaser.Scene {
     };
 
     mkBtn('btn-play', 21, 144, () => {
-      this.scene.start('MainGame', {});
+      this.scene.start('LevelSelectScene');
     });
 
     mkBtn('btn-options', 45, 169, () => this.showOptionsModal());
