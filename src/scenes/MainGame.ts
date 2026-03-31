@@ -97,8 +97,10 @@ export class MainGame extends Phaser.Scene {
   private sessionPlayMs = 0;
   /** Original bonus used ~speedStep 4 with curved path; straight drop was tuned too fast at 152. */
   private readonly bonusFallPxPerSec = 78;
-  /** Native canvas listener (Phaser may skip scene `pointerdown` if event.target !== canvas). */
-  private domPointerLaunch?: () => void;
+  /** Balls spawned on the paddle — launch does not rely on `getData('onPaddle')` alone. */
+  private readonly pendingServeBalls = new Set<Phaser.Physics.Arcade.Image>();
+  /** Capture on #game-root so clicks always reach the game (Phaser often requires event.target === canvas). */
+  private gameRootPointerDown?: (ev: PointerEvent) => void;
 
   constructor() {
     super('MainGame');
@@ -129,6 +131,7 @@ export class MainGame extends Phaser.Scene {
       this.levelIndex = Math.min(this.maxUnlocked, SPACE_LEVEL_STRINGS.length - 1);
     }
     this.boot = {};
+    this.pendingServeBalls.clear();
     this.pausedForUi = false;
     this.userPaused = false;
     this.overlayPausedPhysics = false;
@@ -151,11 +154,12 @@ export class MainGame extends Phaser.Scene {
     document.body.classList.add('tgc-playing-game');
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      const c = this.game.canvas;
-      if (c && this.domPointerLaunch) {
-        c.removeEventListener('pointerdown', this.domPointerLaunch);
-        this.domPointerLaunch = undefined;
+      const root = document.getElementById('game-root');
+      if (root && this.gameRootPointerDown) {
+        root.removeEventListener('pointerdown', this.gameRootPointerDown, { capture: true });
+        this.gameRootPointerDown = undefined;
       }
+      this.pendingServeBalls.clear();
       document.body.classList.remove('tgc-playing-game');
       this.events.off(Phaser.Scenes.Events.POST_UPDATE, this.applyManualBallWalls, this);
       this.overlayPausedPhysics = false;
@@ -320,8 +324,13 @@ export class MainGame extends Phaser.Scene {
       this.releaseGluedBalls();
     };
     this.input.on('pointerdown', onPointerLaunch);
-    this.domPointerLaunch = () => this.releaseGluedBalls();
-    this.game.canvas?.addEventListener('pointerdown', this.domPointerLaunch);
+    this.gameRootPointerDown = () => {
+      if (!this.scene.isActive()) return;
+      this.releaseGluedBalls();
+    };
+    document.getElementById('game-root')?.addEventListener('pointerdown', this.gameRootPointerDown, {
+      capture: true,
+    });
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       syncPointerToPaddle(p);
     });
@@ -648,6 +657,7 @@ export class MainGame extends Phaser.Scene {
     if (this.glue && !this.pausedForUi) {
       const off = Phaser.Math.Clamp(ball.x - this.paddleHit.x, -this.paddleHalfW + 10, this.paddleHalfW - 10);
       ball.setData('onPaddle', true);
+      this.pendingServeBalls.add(ball);
       ball.setData('paddleOff', off);
       ball.removeData('paddleLaunchGrace');
       ball.removeData('lastPaddleBounceAt');
@@ -709,10 +719,12 @@ export class MainGame extends Phaser.Scene {
       ball.setData('paddleOff', (this.ballGroup.getLength() % 3 - 1) * 14);
       body.setVelocity(0, 0);
       ball.setData('paddleLaunchGrace', this.time.now + 620);
+      this.pendingServeBalls.add(ball);
     }
     this.ballGroup.add(ball);
     attachBallTrail(this, ball);
     ball.once(Phaser.GameObjects.Events.DESTROY, () => {
+      this.pendingServeBalls.delete(ball);
       const ev = ball.getData('steelTimer') as Phaser.Time.TimerEvent | undefined;
       ev?.remove(false);
     });
@@ -932,6 +944,7 @@ export class MainGame extends Phaser.Scene {
       if (b.y - r > pbot || b.y + r < top - 14) return;
       const off = Phaser.Math.Clamp(b.x - px, -halfW + r + 4, halfW - r - 4);
       b.setData('onPaddle', true);
+      this.pendingServeBalls.add(b);
       b.setData('paddleOff', off);
       body.setVelocity(0, 0);
       b.removeData('paddleLaunchGrace');
@@ -1229,9 +1242,11 @@ export class MainGame extends Phaser.Scene {
     if (sp > 40) return false;
     const r = body.halfWidth;
     const targetY = this.paddleTopY() - r - 6;
-    if (Math.abs(ball.y - targetY) > 20) return false;
-    const dx = Math.abs(ball.x - this.paddleHit.x);
-    if (dx > this.paddleHalfW + r + 16) return false;
+    const cy = body.center.y;
+    const cx = body.center.x;
+    if (Math.min(Math.abs(ball.y - targetY), Math.abs(cy - targetY)) > 28) return false;
+    const dx = Math.min(Math.abs(ball.x - this.paddleHit.x), Math.abs(cx - this.paddleHit.x));
+    if (dx > this.paddleHalfW + r + 20) return false;
     return true;
   }
 
@@ -1248,8 +1263,10 @@ export class MainGame extends Phaser.Scene {
     this.ballGroup.getChildren().forEach((o) => {
       const b = o as Phaser.Physics.Arcade.Image;
       if (!b.active || !b.body) return;
-      const stuck = !!b.getData('onPaddle') || this.ballIdleOnPaddleRow(b);
+      const stuck =
+        this.pendingServeBalls.has(b) || !!b.getData('onPaddle') || this.ballIdleOnPaddleRow(b);
       if (!stuck) return;
+      this.pendingServeBalls.delete(b);
       b.setData('onPaddle', false);
       b.removeData('lastPaddleBounceAt');
       const body = b.body as Phaser.Physics.Arcade.Body;
@@ -1408,6 +1425,7 @@ export class MainGame extends Phaser.Scene {
     this.blockGroup.clear(true, true);
     this.bonusGroup.clear(true, true);
     this.bulletGroup.clear(true, true);
+    this.pendingServeBalls.clear();
     this.ballGroup.clear(true, true);
     this.ballSpeedCurrent = this.ballSpeedStart;
 
