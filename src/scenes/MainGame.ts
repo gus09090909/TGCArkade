@@ -244,33 +244,6 @@ export class MainGame extends Phaser.Scene {
 
     this.loadLevel(this.levelIndex);
     this.refreshHud();
-
-    // After Arcade world.postUpdate syncs bodies → sprites (POST_UPDATE runs listeners before that).
-    this.events.on(Phaser.Scenes.Events.PRE_RENDER, this.preRenderPaddleTunnelCatch, this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.events.off(Phaser.Scenes.Events.PRE_RENDER, this.preRenderPaddleTunnelCatch, this);
-    });
-  }
-
-  /** After physics + body sync: catch fast balls that skipped overlap in one frame. */
-  private preRenderPaddleTunnelCatch() {
-    if (this.pausedForUi || this.userPaused) return;
-    this.ballGroup.getChildren().forEach((o) => {
-      const ball = o as Phaser.Physics.Arcade.Image;
-      if (!ball.active || ball.getData('onPaddle')) return;
-      const body = ball.body as Phaser.Physics.Arcade.Body;
-      const grace = ball.getData('paddleLaunchGrace') as number | undefined;
-      if (grace !== undefined && this.time.now < grace) return;
-      if (body.velocity.y < 32) return;
-      const r = body.halfWidth;
-      const padTop = this.paddleTopY();
-      const padB = this.paddleHit.y + this.paddleHit.height / 2;
-      const bottom = ball.y + r;
-      if (bottom < padTop - 3 || ball.y - r > padB + r + 4) return;
-      const hw = this.paddleHit.width / 2 + r + 8;
-      if (Math.abs(ball.x - this.paddleHit.x) > hw) return;
-      this.applyClassicPaddleBounce(ball);
-    });
   }
 
   private playSfx(key: string) {
@@ -443,6 +416,27 @@ export class MainGame extends Phaser.Scene {
     sb.updateFromGameObject();
 
     this.paddleHalfW = total / 2;
+    this.clampPaddleIntoBounds();
+  }
+
+  /** Keep paddle visual within screen (center ± half width). */
+  private clampPaddleIntoBounds() {
+    const half = this.paddleHalfW;
+    const cx = Phaser.Math.Clamp(this.paddleRoot.x, half, GAME_WIDTH - half);
+    if (cx === this.paddleRoot.x) return;
+    this.paddleRoot.setX(cx);
+    this.paddleHit.setX(cx);
+    (this.paddleHit.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
+    this.ballGroup.getChildren().forEach((o) => {
+      const b = o as Phaser.Physics.Arcade.Image;
+      if (!b.getData('onPaddle')) return;
+      const off = b.getData('paddleOff') as number;
+      b.x = cx + (typeof off === 'number' ? off : 0);
+      const halfHit = this.paddleHit.height / 2;
+      const r = (b.body as Phaser.Physics.Arcade.Body).halfWidth;
+      b.y = PADDLE_Y - halfHit - r - 6;
+      (b.body as Phaser.Physics.Arcade.Body).updateFromGameObject();
+    });
   }
 
   private setPaddleGun(on: boolean) {
@@ -509,23 +503,22 @@ export class MainGame extends Phaser.Scene {
    */
   private applyClassicPaddleBounce(ball: Phaser.Physics.Arcade.Image) {
     const last = ball.getData('lastPaddleBounceAt') as number | undefined;
-    if (last !== undefined && this.time.now - last < 45) return;
+    if (last !== undefined && this.time.now - last < 36) return;
     ball.setData('lastPaddleBounceAt', this.time.now);
 
     const body = ball.body as Phaser.Physics.Arcade.Body;
     const r = body.halfWidth;
     const padTop = this.paddleTopY();
-    ball.y = padTop - r - 10;
+    ball.y = padTop - r - 8;
     body.updateFromGameObject();
 
     const paddleLeft = this.paddleHit.x - this.paddleHit.width / 2;
     const t = Phaser.Math.Clamp((ball.x - paddleLeft) / this.paddleHit.width, 0, 1);
     const normX = 1 - 2 * t;
     const speed = Math.max(this.ballSpeed, Math.hypot(body.velocity.x, body.velocity.y));
-    const k = 1.28;
-    let vx = -Math.sin(normX) * speed * k;
-    let vy = -Math.cos(normX) * speed * k;
-    if (vy > -140) vy = -this.ballSpeed * 0.94;
+    let vx = -Math.sin(normX) * speed;
+    let vy = -Math.cos(normX) * speed;
+    if (vy > -120) vy = -this.ballSpeed * 0.92;
     body.setVelocity(vx, vy);
     this.ensureBallSpeed(body, ball.y);
 
@@ -563,7 +556,8 @@ export class MainGame extends Phaser.Scene {
   }
 
   private movePaddlePointer(worldX: number) {
-    const x = Phaser.Math.Clamp(worldX, this.paddleHalfW + 2, GAME_WIDTH - this.paddleHalfW - 2);
+    const half = this.paddleHalfW;
+    const x = Phaser.Math.Clamp(worldX, half, GAME_WIDTH - half);
     this.paddleRoot.setPosition(x, PADDLE_Y);
     this.paddleHit.setPosition(x, PADDLE_Y);
     (this.paddleHit.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
@@ -755,7 +749,16 @@ export class MainGame extends Phaser.Scene {
 
   private onBonusPaddle(obj1: Phaser.GameObjects.GameObject, obj2: Phaser.GameObjects.GameObject) {
     const bonus = this.ballFromPaddlePair(obj1, obj2);
-    if (!bonus?.active || bonus.getData('typeId') === undefined) return;
+    this.collectBonus(bonus);
+  }
+
+  /** Single path for pickup (physics overlap + manual sweep so fast drops never pass through). */
+  private collectBonus(bonus: Phaser.Physics.Arcade.Image | null) {
+    if (!bonus?.active || !bonus.body) return;
+    if (bonus.getData('picked')) return;
+    if (bonus.getData('typeId') === undefined) return;
+    bonus.setData('picked', true);
+
     const typeId = bonus.getData('typeId') as number;
     const def = BONUS_TYPES[typeId];
     if (!def) {
@@ -829,6 +832,22 @@ export class MainGame extends Phaser.Scene {
     this.refreshHud();
   }
 
+  /** Axis-aligned pickup band (generous): catches tunneling and thin bodies. */
+  private sweepBonusPickupVsPaddle() {
+    const px = this.paddleHit.x;
+    const py = this.paddleHit.y;
+    const hw = this.paddleHit.width / 2 + 18;
+    const padTop = this.paddleTopY();
+    const padBot = py + this.paddleHit.height / 2 + 6;
+    this.bonusGroup.getChildren().forEach((o) => {
+      const b = o as Phaser.Physics.Arcade.Image;
+      if (!b.active) return;
+      if (Math.abs(b.x - px) > hw) return;
+      if (b.y < padTop - 20 || b.y > padBot + 14) return;
+      this.collectBonus(b);
+    });
+  }
+
   private forEachActiveBall(fn: (b: Phaser.Physics.Arcade.Image) => void) {
     this.ballGroup.getChildren().forEach((o) => {
       const b = o as Phaser.Physics.Arcade.Image;
@@ -883,9 +902,41 @@ export class MainGame extends Phaser.Scene {
   }
 
   private trySpawnBonus(x: number, y: number) {
-    const typeId = Phaser.Math.Between(0, BONUS_TYPES.length - 1);
+    if (Phaser.Math.FloatBetween(0, 1) > 0.38) return;
+
+    let totalW = 0;
+    const weights: number[] = [];
+    for (let i = 0; i < BONUS_TYPES.length; i++) {
+      const t = BONUS_TYPES[i];
+      const folder = bonusTextureFolder(t.name);
+      if (!this.textures.exists(`bonus-${folder}`)) {
+        weights.push(0);
+        continue;
+      }
+      if (t.max_incidence !== undefined) {
+        const n = this.bonusIncidence[t.name] ?? 0;
+        if (n >= t.max_incidence) {
+          weights.push(0);
+          continue;
+        }
+      }
+      const w = 1 / Math.max(1, t.create_rate);
+      weights.push(w);
+      totalW += w;
+    }
+    if (totalW <= 0) return;
+
+    const pick = Phaser.Math.FloatBetween(0, totalW - 1e-6);
+    let acc = 0;
+    let typeId = 0;
+    for (let i = 0; i < weights.length; i++) {
+      acc += weights[i];
+      if (pick < acc) {
+        typeId = i;
+        break;
+      }
+    }
     const t = BONUS_TYPES[typeId];
-    if (Phaser.Math.Between(0, t.create_rate - 1) !== 0) return;
     if (t.max_incidence !== undefined) {
       const n = this.bonusIncidence[t.name] ?? 0;
       if (n >= t.max_incidence) return;
@@ -893,13 +944,12 @@ export class MainGame extends Phaser.Scene {
     }
     const folder = bonusTextureFolder(t.name);
     const key = `bonus-${folder}`;
-    if (!this.textures.exists(key)) return;
     const b = this.physics.add.image(x, y, key) as Phaser.Physics.Arcade.Image;
     b.setDepth(18);
     const body = b.body as Phaser.Physics.Arcade.Body;
     body.setAllowGravity(false);
     b.setData('typeId', typeId);
-    body.setVelocity(0, 92);
+    body.setVelocity(0, 132);
     this.bonusGroup.add(b);
   }
 
@@ -1194,18 +1244,16 @@ export class MainGame extends Phaser.Scene {
       ball.setData('wallL', blocked.left);
       ball.setData('wallR', blocked.right);
 
-      if (blocked.up && Math.abs(body.velocity.y) < 48) {
+      if (blocked.up && Math.abs(body.velocity.y) < 22) {
         this.ensureBallSpeed(body, ball.y);
       }
     });
 
+    this.sweepBonusPickupVsPaddle();
     this.bonusGroup.getChildren().forEach((o) => {
       const b = o as Phaser.Physics.Arcade.Image;
       if (!b.active) return;
-      const body = b.body as Phaser.Physics.Arcade.Body;
-      const vx = Math.sin(this.time.now / 320) * 55;
-      body.setVelocity(vx, 88);
-      if (b.y > GAME_HEIGHT + 40) b.destroy();
+      if (b.y > GAME_HEIGHT + 48) b.destroy();
     });
 
     let anyFallen = false;
