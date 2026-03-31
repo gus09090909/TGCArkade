@@ -27,6 +27,12 @@ import {
 import { HitSparkPool } from '../game/fx/hitSparkPool';
 import { closeTgcOverlay, openTgcOverlay, setTgcOverlayContext } from '../ui/tgcOverlay';
 
+/** Phaser 3 GameObjects do not implement `removeData`; use the DataManager. */
+function eraseGoData(go: Phaser.GameObjects.GameObject, key: string): void {
+  const dm = go.data;
+  if (dm) dm.remove(key);
+}
+
 type BootData = { level?: number; resetAll?: boolean };
 
 type BlockUserData = {
@@ -659,8 +665,8 @@ export class MainGame extends Phaser.Scene {
       ball.setData('onPaddle', true);
       this.pendingServeBalls.add(ball);
       ball.setData('paddleOff', off);
-      ball.removeData('paddleLaunchGrace');
-      ball.removeData('lastPaddleBounceAt');
+      eraseGoData(ball, 'paddleLaunchGrace');
+      eraseGoData(ball, 'lastPaddleBounceAt');
       body.setVelocity(0, 0);
       ball.x = this.paddleHit.x + off;
       const halfHit = this.paddleHit.height / 2;
@@ -756,7 +762,7 @@ export class MainGame extends Phaser.Scene {
     this.applyBallSize(ball, size);
     const prev = ball.getData('steelTimer') as Phaser.Time.TimerEvent | undefined;
     prev?.remove(false);
-    ball.removeData('steelTimer');
+    eraseGoData(ball, 'steelTimer');
     if (on) {
       const ev = this.time.delayedCall(10000, () => {
         if (!ball.active || !ball.body) return;
@@ -947,8 +953,8 @@ export class MainGame extends Phaser.Scene {
       this.pendingServeBalls.add(b);
       b.setData('paddleOff', off);
       body.setVelocity(0, 0);
-      b.removeData('paddleLaunchGrace');
-      b.removeData('lastPaddleBounceAt');
+      eraseGoData(b, 'paddleLaunchGrace');
+      eraseGoData(b, 'lastPaddleBounceAt');
       b.x = px + off;
       const halfHit = this.paddleHit.height / 2;
       b.y = PADDLE_Y - halfHit - r - 6;
@@ -1268,7 +1274,7 @@ export class MainGame extends Phaser.Scene {
       if (!stuck) return;
       this.pendingServeBalls.delete(b);
       b.setData('onPaddle', false);
-      b.removeData('lastPaddleBounceAt');
+      eraseGoData(b, 'lastPaddleBounceAt');
       const body = b.body as Phaser.Physics.Arcade.Body;
       let off = b.getData('paddleOff') as number;
       if (typeof off !== 'number') {
