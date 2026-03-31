@@ -95,6 +95,8 @@ export class MainGame extends Phaser.Scene {
   private scoreAtLevelStart = 0;
   private livesAtLevelStart = 3;
   private sessionPlayMs = 0;
+  /** Original bonus used ~speedStep 4 with curved path; straight drop was tuned too fast at 152. */
+  private readonly bonusFallPxPerSec = 78;
 
   constructor() {
     super('MainGame');
@@ -661,6 +663,10 @@ export class MainGame extends Phaser.Scene {
     }
     this.ballGroup.add(ball);
     attachBallTrail(this, ball);
+    ball.once(Phaser.GameObjects.Events.DESTROY, () => {
+      const ev = ball.getData('steelTimer') as Phaser.Time.TimerEvent | undefined;
+      ev?.remove(false);
+    });
     return ball;
   }
 
@@ -680,14 +686,21 @@ export class MainGame extends Phaser.Scene {
   }
 
   private setBallSteel(ball: Phaser.Physics.Arcade.Image, on: boolean) {
+    if (!ball.active) return;
+    if (on && !this.textures.exists('ball-steel')) return;
     ball.setData('steel', on);
     ball.setTexture(on ? 'ball-steel' : 'ball-normal');
     const size = ball.getData('size') as 'small' | 'normal' | 'big';
     setBallTrailSteel(ball, on);
     this.applyBallSize(ball, size);
+    const prev = ball.getData('steelTimer') as Phaser.Time.TimerEvent | undefined;
+    prev?.remove(false);
     ball.removeData('steelTimer');
     if (on) {
-      const ev = this.time.delayedCall(10000, () => this.setBallSteel(ball, false));
+      const ev = this.time.delayedCall(10000, () => {
+        if (!ball.active || !ball.body) return;
+        this.setBallSteel(ball, false);
+      });
       ball.setData('steelTimer', ev);
     }
   }
@@ -731,6 +744,7 @@ export class MainGame extends Phaser.Scene {
 
     let nx = 0;
     let ny = 0;
+    const steel = !!ball.getData('steel');
     if (absX * ph < absY * pw) {
       ny = Math.sign(dy) * (ph - absY + 0.5);
       body.velocity.y *= -1;
@@ -738,14 +752,17 @@ export class MainGame extends Phaser.Scene {
       nx = Math.sign(dx) * (pw - absX + 0.5);
       body.velocity.x *= -1;
     }
-    ball.x += nx;
-    ball.y += ny;
+    const push = steel ? 2.5 : 1;
+    ball.x += nx * push;
+    ball.y += ny * push;
     body.updateFromGameObject();
 
     this.hitSparks.burst(ball.x, ball.y);
-    setBallTrailFromBlock(ball, bd.typeId);
+    if (!steel) {
+      setBallTrailFromBlock(ball, bd.typeId);
+    }
 
-    bd.immuneUntil = now + 28;
+    bd.immuneUntil = now + (steel ? 42 : 28);
     this.bumpBallSpeed(ball.getData('steel') ? 3 : 2);
 
     if (!bd.destroyable) {
@@ -944,8 +961,7 @@ export class MainGame extends Phaser.Scene {
         this.applyBallSize(b, 'small');
       });
     } else if (name === 'steel-ball') {
-      const b = this.getPrimaryBall();
-      if (b) this.setBallSteel(b, true);
+      this.forEachActiveBall((b) => this.setBallSteel(b, true));
     } else if (name === 'laser' || name === 'gun') {
       this.setPaddleGun(true);
     }
@@ -1374,7 +1390,7 @@ export class MainGame extends Phaser.Scene {
       const b = o as Phaser.Physics.Arcade.Image;
       if (!b.active || b.getData('picked')) return;
       if (b.getData('bonusKinematic')) {
-        b.y += 152 * d;
+        b.y += this.bonusFallPxPerSec * d;
         const bd = b.body as Phaser.Physics.Arcade.Body;
         bd.setVelocity(0, 0);
         bd.updateFromGameObject();
