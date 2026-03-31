@@ -131,6 +131,12 @@ export class MainGame extends Phaser.Scene {
     this.sessionPlayMs = 0;
     this.bonusIncidence = {};
     this.glue = false;
+    try {
+      this.physics.world.resume();
+    } catch {
+      /* */
+    }
+    this.input.enabled = true;
     this.glueExpireTimer?.remove(false);
     this.glueExpireTimer = undefined;
     this.paddleGun = false;
@@ -587,6 +593,9 @@ export class MainGame extends Phaser.Scene {
    * @see https://github.com/gus09090909/TGC-Arkade/blob/master/js/app/entity/ball.js
    */
   private applyClassicPaddleBounce(ball: Phaser.Physics.Arcade.Image) {
+    const launchGrace = ball.getData('paddleLaunchGrace') as number | undefined;
+    if (launchGrace !== undefined && this.time.now < launchGrace) return;
+
     const last = ball.getData('lastPaddleBounceAt') as number | undefined;
     if (last !== undefined && this.time.now - last < 28) return;
     ball.setData('lastPaddleBounceAt', this.time.now);
@@ -901,6 +910,8 @@ export class MainGame extends Phaser.Scene {
     this.ballGroup.getChildren().forEach((o) => {
       const b = o as Phaser.Physics.Arcade.Image;
       if (!b.active || b.getData('onPaddle')) return;
+      const snapGrace = b.getData('paddleLaunchGrace') as number | undefined;
+      if (snapGrace !== undefined && this.time.now < snapGrace) return;
       const body = b.body as Phaser.Physics.Arcade.Body;
       const r = body.halfWidth;
       if (Math.abs(b.x - px) > halfW + r + 6) return;
@@ -1195,10 +1206,17 @@ export class MainGame extends Phaser.Scene {
 
   private releaseGluedBalls() {
     if (this.pausedForUi || this.userPaused) return;
-    const sp = this.ballSpeedCurrent;
+    if (!this.overlayPausedPhysics && this.physics.world.isPaused) {
+      try {
+        this.physics.resume();
+      } catch {
+        /* */
+      }
+    }
+    const sp = Math.max(48, this.ballSpeedCurrent);
     this.ballGroup.getChildren().forEach((o) => {
       const b = o as Phaser.Physics.Arcade.Image;
-      if (!b.getData('onPaddle')) return;
+      if (!b.active || !b.getData('onPaddle')) return;
       b.setData('onPaddle', false);
       b.removeData('lastPaddleBounceAt');
       const body = b.body as Phaser.Physics.Arcade.Body;
@@ -1208,7 +1226,7 @@ export class MainGame extends Phaser.Scene {
       b.y = this.paddleTopY() - r - 6;
       const ang = -Math.PI / 2 + Phaser.Math.FloatBetween(-0.38, 0.38);
       body.setVelocity(Math.cos(ang) * sp, Math.sin(ang) * sp);
-      b.setData('paddleLaunchGrace', this.time.now + 500);
+      b.setData('paddleLaunchGrace', this.time.now + 720);
       body.updateFromGameObject();
     });
     this.hintText.setVisible(this.ballGroup.getLength() === 0);
