@@ -25,7 +25,7 @@ import {
   updateBallTrail,
 } from '../game/fx/ballTrail';
 import { HitSparkPool } from '../game/fx/hitSparkPool';
-import { closeTgcOverlay, openTgcOverlay, setTgcOverlayContext } from '../ui/tgcOverlay';
+import { closeTgcOverlay, setTgcOverlayContext } from '../ui/tgcOverlay';
 
 /** Phaser 3 GameObjects do not implement `removeData`; use the DataManager. */
 function eraseGoData(go: Phaser.GameObjects.GameObject, key: string): void {
@@ -202,10 +202,6 @@ export class MainGame extends Phaser.Scene {
         if (ev.repeat) return;
         this.toggleUserPause();
       });
-      this.input.keyboard.on('keydown-M', (ev: KeyboardEvent) => {
-        if (ev.repeat) return;
-        this.goToMenu();
-      });
       const launchKeys = (ev: KeyboardEvent) => {
         if (ev.repeat) return;
         if (this.pausedForUi || this.userPaused || this.overlayPausedPhysics) return;
@@ -270,25 +266,6 @@ export class MainGame extends Phaser.Scene {
         }
       },
     });
-    if (this.textures.exists('btn-user')) {
-      const ix = GAME_WIDTH - 14;
-      const iy = GAME_HEIGHT - 14;
-      this.add.image(ix, iy, 'btn-user').setOrigin(1, 1).setScale(0.85).setDepth(55);
-      const userZ = this.add.zone(ix - 20, iy - 20, 48, 48).setDepth(56);
-      userZ.setInteractive({ useHandCursor: true });
-      userZ.on('pointerdown', () => openTgcOverlay());
-    }
-
-    const dashZ = this.add.zone(GAME_WIDTH - 72, GAME_HEIGHT - 20, 128, 40).setDepth(56);
-    dashZ.setInteractive({ useHandCursor: true });
-    dashZ.on('pointerdown', () => this.goToMenu());
-    this.add
-      .text(GAME_WIDTH - 12, GAME_HEIGHT - 12, 'Dashboard · M', uiStyle({
-        fontSize: '18px',
-        color: '#78909c',
-      }))
-      .setOrigin(1, 1)
-      .setDepth(57);
 
     /** Overlap + manual bounce only — collider + bounce(1) on the ball fought Arcade and felt random. */
     this.physics.add.overlap(
@@ -507,7 +484,7 @@ export class MainGame extends Phaser.Scene {
     const ch = this.textures.getFrame('pad-center').height;
     const baseCw = this.textures.getFrame('pad-center').width;
     const rw = this.textures.getFrame('pad-right').width;
-    const cw = Phaser.Math.Clamp(Math.round(baseCw * this.paddleCenterMul), 18, 220);
+    const cw = Phaser.Math.Clamp(Math.round(baseCw * this.paddleCenterMul), 18, 340);
     const total = lw + cw + rw;
 
     if (!this.paddleRoot) {
@@ -1056,7 +1033,7 @@ export class MainGame extends Phaser.Scene {
     this.spawnBonusPickupLabel(labelX, labelY, def);
     this.playSfx('s-bonus');
     if (def.score > 0) this.score += def.score;
-    else this.score = Math.max(0, this.score + def.score);
+    else if (def.score < 0) this.score = Math.max(0, this.score + def.score);
 
     const name = def.name;
     if (name === '3-balls') {
@@ -1087,11 +1064,11 @@ export class MainGame extends Phaser.Scene {
     } else if (name === 'extra-life') {
       this.lives++;
     } else if (name === 'grow-paddle') {
-      this.paddleCenterMul = Math.min(1.65, this.paddleCenterMul * 1.35);
+      this.paddleCenterMul = Math.min(2.45, this.paddleCenterMul * 1.48);
       this.buildPaddle(PADDLE_Y);
       this.schedulePaddleSizeRevert(15000);
     } else if (name === 'shrink-paddle') {
-      this.paddleCenterMul = Math.max(0.55, this.paddleCenterMul * 0.72);
+      this.paddleCenterMul = Math.max(0.5, this.paddleCenterMul * 0.68);
       this.buildPaddle(PADDLE_Y);
       this.schedulePaddleSizeRevert(15000);
     } else if (name === 'score') {
@@ -1408,23 +1385,31 @@ export class MainGame extends Phaser.Scene {
       });
     }
     this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 30, 'Game over', uiStyle({
+      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 48, 'Game over', uiStyle({
         fontSize: '40px',
         color: '#ef9a9a',
       }))
       .setOrigin(0.5)
       .setDepth(60);
-    const r = this.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 20, 'Play again', uiStyle({
-        fontSize: '24px',
-        color: '#90caf9',
+    const btnY = GAME_HEIGHT / 2 + 56;
+    const btnW = 320;
+    const btnH = 64;
+    const dashBtn = this.add
+      .rectangle(GAME_WIDTH / 2, btnY, btnW, btnH, 0x1565c0, 1)
+      .setStrokeStyle(3, 0x64b5f6)
+      .setDepth(60)
+      .setInteractive({ useHandCursor: true });
+    const dashLabel = this.add
+      .text(GAME_WIDTH / 2, btnY, 'Dashboard', uiStyle({
+        fontSize: '34px',
+        color: '#eceff1',
       }))
       .setOrigin(0.5)
-      .setInteractive({ useHandCursor: true })
-      .setDepth(60);
-    r.on('pointerdown', () => {
-      this.scene.restart({ resetAll: true });
-    });
+      .setDepth(61);
+    const goDash = () => this.goToMenu();
+    dashBtn.on('pointerdown', goDash);
+    dashLabel.setInteractive({ useHandCursor: true });
+    dashLabel.on('pointerdown', goDash);
   }
 
   private loadLevel(index: number) {

@@ -13,7 +13,7 @@ export const BONUS_TYPES: BonusTypeDef[] = [
   { name: 'extra-life', score: 5, create_rate: 12, max_incidence: 1 },
   { name: 'glue-paddle', score: 5, create_rate: 3 },
   { name: 'grow-paddle', score: 5, create_rate: 2 },
-  { name: 'shrink-paddle', score: -5, create_rate: 2 },
+  { name: 'shrink-paddle', score: 0, create_rate: 2 },
   { name: 'score', score: 10, create_rate: 2 },
   { name: 'score', score: 50, create_rate: 3 },
   { name: 'score', score: 100, create_rate: 4 },
