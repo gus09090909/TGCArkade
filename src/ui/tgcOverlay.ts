@@ -11,9 +11,12 @@ import {
 import { SPACE_LEVEL_STRINGS } from '../data/spaceLevels';
 import {
   ACHIEVEMENT_DEFS,
+  formatAchievementStrings,
   getLocalUnlockedIds,
   mergeServerAchievementIds,
+  syncEvaluatedAchievementsToCloud,
 } from '../game/achievements';
+import { S } from '../game/classicStrings';
 
 export type OverlayBridge = {
   getMaxUnlockedLevel: () => number;
@@ -50,7 +53,42 @@ function $(id: string) {
   return el;
 }
 
-/** Call once after DOM is available (e.g. from `main.ts`). */
+function apiLikelyConfigured(): boolean {
+  return true;
+}
+
+function renderAchievementTiles(remote: Record<string, number> | undefined) {
+  const grid = $('tgc-ach-grid');
+  grid.innerHTML = '';
+  const remoteKeys = remote && typeof remote === 'object' ? new Set(Object.keys(remote)) : new Set<string>();
+  const local = getLocalUnlockedIds();
+  for (const def of ACHIEVEMENT_DEFS) {
+    const unlocked = local.has(def.id) || remoteKeys.has(def.id);
+    const { title, desc } = formatAchievementStrings(def);
+    const tile = document.createElement('div');
+    tile.className = 'tgc-ach-tile' + (unlocked ? '' : ' tgc-ach-tile--locked');
+    tile.innerHTML = `
+      <div class="tgc-ach-tile__icon" aria-hidden="true">${def.icon}</div>
+      <div class="tgc-ach-tile__title"></div>
+      <div class="tgc-ach-tile__desc"></div>
+    `;
+    tile.querySelector('.tgc-ach-tile__title')!.textContent = title;
+    tile.querySelector('.tgc-ach-tile__desc')!.textContent = desc;
+    grid.appendChild(tile);
+  }
+}
+
+function fillProfileStats(p: Profile) {
+  const s = p.stats;
+  const ptMin = Math.floor((s.playTimeMs | 0) / 60000);
+  $('tgc-stat-playtime').textContent = `${ptMin} min`;
+  $('tgc-stat-totalscore').textContent = String(s.totalScore | 0);
+  const bestRun = Math.max(s.bestSessionScore | 0, s.highScore | 0);
+  $('tgc-stat-highscore').textContent = String(bestRun);
+  $('tgc-stat-deaths').textContent = String(s.deaths | 0);
+  $('tgc-stat-levels').textContent = String((p.maxUnlockedLevelIndex | 0) + 1);
+}
+
 export function initTgcOverlayDom() {
   if (domReady) return;
   domReady = true;
@@ -58,173 +96,164 @@ export function initTgcOverlayDom() {
   const overlay = $('tgc-overlay');
   const tabProfile = $('tgc-tab-profile');
   const tabLb = $('tgc-tab-leaderboard');
-  const tabAch = $('tgc-tab-achievements');
-  const achStatus = $('tgc-ach-status');
-  const achGrid = $('tgc-ach-grid');
-  const input = $('tgc-username') as HTMLInputElement;
   const msg = $('tgc-profile-msg');
-  const statsEl = $('tgc-profile-stats');
-  const lbList = $('tgc-lb-list');
   const lbStatus = $('tgc-lb-status');
 
-  let activeTab: 'profile' | 'leaderboard' | 'achievements' = 'profile';
+  let activeTab: 'profile' | 'leaderboard' = 'profile';
 
-  function showTab(which: 'profile' | 'leaderboard' | 'achievements') {
+  function showTab(which: 'profile' | 'leaderboard') {
     activeTab = which;
     tabProfile.classList.toggle(HIDDEN, which !== 'profile');
     tabLb.classList.toggle(HIDDEN, which !== 'leaderboard');
-    tabAch.classList.toggle(HIDDEN, which !== 'achievements');
-    document.querySelectorAll('.tgc-tabs button').forEach((b) => {
-      b.classList.toggle('tgc-active', (b as HTMLElement).dataset.tab === which);
+    document.querySelectorAll('#tgc-overlay .tgc-profile-tabs a').forEach((a) => {
+      const el = a as HTMLAnchorElement;
+      el.classList.toggle('tab-selected', el.dataset.tab === which);
     });
     if (which === 'leaderboard') void loadLeaderboard();
-    if (which === 'achievements') void loadAchievementsPanel();
   }
 
   async function loadLeaderboard() {
-    lbStatus.textContent = 'Loading…';
-    lbList.innerHTML = '';
+    lbStatus.textContent = '';
+    const live = $('tgc-lb-live');
+    const table = $('tgc-lb-table');
+    live.textContent = '…';
+    table.innerHTML = '';
     const data = await fetchLeaderboard();
     if (!data) {
-      lbStatus.textContent = 'Could not load ranking. Is the API running?';
+      live.textContent = '';
+      table.innerHTML = `<p class="tgc-lb-empty">${S.lbError}</p>`;
       return;
     }
-    lbStatus.textContent = '';
-    data.entries.slice(0, 50).forEach((row, i) => {
-      const li = document.createElement('li');
-      li.textContent = `${i + 1}. ${row.username} — ${row.score}`;
-      lbList.appendChild(li);
+    const t = new Date(data.updatedAt || Date.now());
+    live.textContent = `${S.lbUpdated} ${t.toLocaleTimeString()}`;
+    const rows = data.entries.slice(0, 100);
+    if (rows.length === 0) {
+      table.innerHTML = `<p class="tgc-lb-empty">${S.lbEmpty}</p>`;
+      return;
+    }
+    const me = getStoredUsername();
+    let html = `<table class="tgc-lb-grid"><thead><tr>
+      <th>#</th><th>${S.lbPlayer}</th><th>${S.lbScore}</th>
+    </tr></thead><tbody>`;
+    rows.forEach((e, i) => {
+      const isMe = e.username === me ? ' class="tgc-lb-me"' : '';
+      html += `<tr${isMe}><td>${i + 1}</td><td>${escapeHtml(e.username)}</td><td>${e.score | 0}</td></tr>`;
     });
-    if (data.entries.length === 0) {
-      lbStatus.textContent = 'No scores yet.';
-    }
+    html += '</tbody></table>';
+    table.innerHTML = html;
   }
 
-  function formatProfile(p: Profile): string {
-    const s = p.stats;
-    const achN = p.achievements && typeof p.achievements === 'object' ? Object.keys(p.achievements).length : 0;
-    return [
-      `Max level unlocked (cloud): ${p.maxUnlockedLevelIndex + 1}`,
-      `High score: ${s.highScore}`,
-      `Best session: ${s.bestSessionScore}`,
-      `Rounds won: ${s.roundsWon}`,
-      `Deaths: ${s.deaths}`,
-      `Achievements (cloud): ${achN} — open the Achievements tab for detail.`,
-    ].join('\n');
+  function escapeHtml(s: string) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  function renderAchievementCards(remote: Record<string, number> | undefined) {
-    achGrid.innerHTML = '';
-    const remoteKeys = remote && typeof remote === 'object' ? new Set(Object.keys(remote)) : new Set<string>();
-    const local = getLocalUnlockedIds();
-    for (const def of ACHIEVEMENT_DEFS) {
-      const unlocked = local.has(def.id) || remoteKeys.has(def.id);
-      const card = document.createElement('div');
-      card.className = 'tgc-ach-card' + (unlocked ? ' tgc-ach-unlocked' : ' tgc-ach-locked');
-      const icon = document.createElement('div');
-      icon.className = 'tgc-ach-icon';
-      icon.textContent = unlocked ? '★' : '☆';
-      const body = document.createElement('div');
-      body.className = 'tgc-ach-body';
-      const t = document.createElement('div');
-      t.className = 'tgc-ach-title';
-      t.textContent = def.title;
-      const d = document.createElement('div');
-      d.className = 'tgc-ach-desc';
-      d.textContent = def.description;
-      body.appendChild(t);
-      body.appendChild(d);
-      card.appendChild(icon);
-      card.appendChild(body);
-      achGrid.appendChild(card);
-    }
-  }
-
-  async function loadAchievementsPanel() {
-    achStatus.textContent = 'Loading…';
-    achGrid.innerHTML = '';
+  async function refreshProfileTab() {
+    msg.textContent = '';
     const name = getStoredUsername();
+    $('tgc-profile-name').textContent = name.length >= 2 ? name : '—';
+    $('tgc-profile-cloud').textContent = apiLikelyConfigured() ? S.profileCloudOn : S.profileCloudOff;
+
     if (name.length < 2) {
-      achStatus.textContent = 'Set a player name on the welcome screen or under Profile.';
-      renderAchievementCards(undefined);
+      $('tgc-stat-playtime').textContent = '0';
+      $('tgc-stat-totalscore').textContent = '0';
+      $('tgc-stat-highscore').textContent = '0';
+      $('tgc-stat-deaths').textContent = '0';
+      $('tgc-stat-levels').textContent = '0';
+      renderAchievementTiles(undefined);
       return;
     }
+
     const p = await fetchProfile(name);
     if (p === false) {
-      achStatus.textContent = 'No cloud profile yet — use Profile → Save & sync.';
-      renderAchievementCards(undefined);
+      msg.textContent = 'No server profile yet — press Sync now after playing.';
+      renderAchievementTiles(undefined);
       return;
     }
     if (p === null) {
-      achStatus.textContent = 'Could not reach API — showing local unlocks only.';
-      mergeServerAchievementIds(undefined);
-      renderAchievementCards(undefined);
+      msg.textContent = 'Could not reach API.';
+      renderAchievementTiles(undefined);
       return;
     }
     mergeServerAchievementIds(p.achievements);
-    achStatus.textContent = '';
-    renderAchievementCards(p.achievements);
+    fillProfileStats(p);
+    renderAchievementTiles(p.achievements);
   }
 
-  async function saveProfile() {
-    const name = input.value.trim();
-    if (name.length < 2 || name.length > 32) {
-      msg.textContent = 'Name must be 2–32 characters.';
+  async function syncNow() {
+    const name = getStoredUsername();
+    if (name.length < 2) {
+      msg.textContent = 'Set your callsign on the welcome screen first.';
       return;
     }
-    msg.textContent = 'Saving…';
-    const reg = await register(name);
-    if (!reg) {
-      msg.textContent = 'Register failed (network or server).';
+    msg.textContent = 'Syncing…';
+    let p = await fetchProfile(name);
+    if (p === false) {
+      const reg = await register(name);
+      if (!reg) {
+        msg.textContent = 'Could not register profile.';
+        return;
+      }
+      p = reg;
+    } else if (p === null) {
+      msg.textContent = 'Could not reach API.';
       return;
     }
-    setStoredUsername(name);
+
     const localMax = ctx.getMaxUnlockedLevel();
     const ach: Record<string, number> = {};
     for (const id of getLocalUnlockedIds()) ach[id] = Math.floor(Date.now() / 1000);
+
     const merged: Partial<Profile> = {
-      maxUnlockedLevelIndex: Math.max(reg.maxUnlockedLevelIndex | 0, localMax),
+      maxUnlockedLevelIndex: Math.max(p.maxUnlockedLevelIndex | 0, localMax),
       stats: {
-        ...reg.stats,
-        highScore: Math.max(reg.stats.highScore | 0, getLocalHighScore()),
+        ...p.stats,
+        highScore: Math.max(p.stats.highScore | 0, getLocalHighScore()),
       },
       achievements: Object.keys(ach).length ? ach : undefined,
     };
+
     const put = await pushProfile(name, merged);
     if (!put) {
-      msg.textContent = 'Saved locally; cloud sync failed.';
-      statsEl.textContent = formatProfile(reg);
+      msg.textContent = 'Sync failed.';
       return;
     }
-    msg.textContent = 'Synced with server.';
-    statsEl.textContent = formatProfile(put);
+    mergeServerAchievementIds(put.achievements);
+    fillProfileStats(put);
+    renderAchievementTiles(put.achievements);
+    void syncEvaluatedAchievementsToCloud(put);
+    msg.textContent = 'Synced.';
   }
 
-  async function refreshProfilePanel() {
-    input.value = getStoredUsername();
-    statsEl.textContent = '';
-    msg.textContent = '';
+  function copyInviteLink() {
     const name = getStoredUsername();
-    if (name.length < 2) {
-      statsEl.textContent = 'Enter a name and save to create your cloud profile.';
-      return;
-    }
-    const p = await fetchProfile(name);
-    if (p === false) {
-      statsEl.textContent = 'No server profile yet — press Save & sync.';
-    } else if (p === null) {
-      statsEl.textContent = 'Could not reach API.';
+    if (name.length < 2) return;
+    const link = `${location.origin}${location.pathname}?tgc_player=${encodeURIComponent(name)}`;
+    const text = `${link}\n${S.shareBlurb}`;
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(text);
+      msg.textContent = 'Link copied.';
     } else {
-      mergeServerAchievementIds(p.achievements);
-      statsEl.textContent = formatProfile(p);
+      window.prompt(S.copyManual, link);
     }
+  }
+
+  function logout() {
+    if (!window.confirm(S.logoutConfirm)) return;
+    setStoredUsername('');
+    try {
+      localStorage.removeItem('tgc_ach_local');
+    } catch {
+      /* */
+    }
+    close();
+    window.location.reload();
   }
 
   function open() {
     overlay.classList.remove(HIDDEN);
     overlay.setAttribute('aria-hidden', 'false');
     ctx.onOpen();
-    void refreshProfilePanel();
+    void refreshProfileTab();
     showTab(activeTab);
   }
 
@@ -240,14 +269,17 @@ export function initTgcOverlayDom() {
   $('tgc-close').addEventListener('click', close);
   overlay.querySelector('.tgc-backdrop')?.addEventListener('click', close);
 
-  document.querySelectorAll('.tgc-tabs button').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const raw = (btn as HTMLElement).dataset.tab;
-      if (raw === 'profile' || raw === 'leaderboard' || raw === 'achievements') showTab(raw);
+  document.querySelectorAll('#tgc-overlay .tgc-profile-tabs a').forEach((a) => {
+    a.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      const raw = (a as HTMLElement).dataset.tab;
+      if (raw === 'profile' || raw === 'leaderboard') showTab(raw);
     });
   });
 
-  $('tgc-save-profile').addEventListener('click', () => void saveProfile());
+  $('tgc-profile-copy').addEventListener('click', () => copyInviteLink());
+  $('tgc-profile-sync').addEventListener('click', () => void syncNow());
+  $('tgc-profile-logout').addEventListener('click', () => logout());
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !overlay.classList.contains(HIDDEN)) close();

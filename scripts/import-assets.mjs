@@ -82,4 +82,39 @@ for (let i = 0; i < paths.length; i++) {
   }
   await new Promise((r) => setTimeout(r, 40));
 }
+
+const EXTRAS = [['images/tgc-welcome-bg.png', 'images/tgc-welcome-bg.png']];
+for (const [rel, sub] of EXTRAS) {
+  process.stdout.write(`[extra] ${rel} ... `);
+  try {
+    const url = BASE + rel;
+    const dest = path.join(OUT, sub);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    await new Promise((resolve, reject) => {
+      const file = fs.createWriteStream(dest);
+      https
+        .get(url, (res) => {
+          if (res.statusCode !== 200) {
+            file.close();
+            try {
+              fs.unlinkSync(dest);
+            } catch {
+              /* */
+            }
+            reject(new Error(String(res.statusCode)));
+            return;
+          }
+          res.pipe(file);
+          file.on('finish', () => file.close(() => resolve()));
+        })
+        .on('error', reject);
+    });
+    console.log('ok');
+    ok++;
+  } catch (e) {
+    console.log('FAIL', e.message);
+    fail++;
+  }
+}
+
 console.log('Done. ok:', ok, 'fail:', fail);

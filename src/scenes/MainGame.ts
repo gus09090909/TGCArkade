@@ -7,9 +7,10 @@ import {
   pushProfile,
   sessionEnd,
   setLocalHighScore,
+  type Profile,
 } from '../api/tgcCloud';
 import { BALL_RADIUS, GAME_HEIGHT, GAME_WIDTH, PADDLE_Y } from '../game/constants';
-import { tryUnlockAchievement } from '../game/achievements';
+import { syncEvaluatedAchievementsToCloud } from '../game/achievements';
 import { uiStyle } from '../game/uiFonts';
 import { blockTextureKey, getBlockDef } from '../game/blockRegistry';
 import { blockWorldRect, parseLevelString, type PlacedBlock } from '../game/parseLevel';
@@ -78,6 +79,10 @@ export class MainGame extends Phaser.Scene {
   private bgParallaxBack!: Phaser.GameObjects.Image;
   private bgParallaxMid!: Phaser.GameObjects.Image;
   private bgParallaxFront!: Phaser.GameObjects.Image;
+  private levelStartMs = 0;
+  private scoreAtLevelStart = 0;
+  private livesAtLevelStart = 3;
+  private sessionPlayMs = 0;
 
   constructor() {
     super('MainGame');
@@ -109,6 +114,7 @@ export class MainGame extends Phaser.Scene {
     }
     this.boot = {};
     this.pausedForUi = false;
+    this.sessionPlayMs = 0;
     this.bonusIncidence = {};
     this.glue = false;
     this.paddleGun = false;
@@ -370,7 +376,7 @@ export class MainGame extends Phaser.Scene {
       this.physics.add.existing(this.paddleRoot, false);
       const body = this.paddleRoot.body as Phaser.Physics.Arcade.Body;
       body.setImmovable(true);
-      body.setCollideWorldBounds(true);
+      body.setCollideWorldBounds(false);
       this.paddleRoot.setDepth(25);
     }
 
@@ -563,6 +569,7 @@ export class MainGame extends Phaser.Scene {
 
     if (!bd.destroyable) {
       this.playBlockHit(true);
+      this.clampBallMotion(body);
       return;
     }
 
@@ -575,8 +582,9 @@ export class MainGame extends Phaser.Scene {
       block.setTexture(key);
     }
 
+    this.clampBallMotion(body);
+
     if (bd.hp <= 0) {
-      tryUnlockAchievement('first_break');
       if (bd.primary) this.primaryLeft = Math.max(0, this.primaryLeft - 1);
       this.score += bd.score;
       if (bdef.animateScore) {
@@ -664,17 +672,17 @@ export class MainGame extends Phaser.Scene {
       });
     } else if (name === 'grow-paddle') {
       this.paddleCenterMul = Math.min(1.65, this.paddleCenterMul * 1.35);
-      this.buildPaddle(this.paddleRoot.y);
+      this.buildPaddle(PADDLE_Y);
       this.time.delayedCall(15000, () => {
         this.paddleCenterMul = 1;
-        this.buildPaddle(this.paddleRoot.y);
+        this.buildPaddle(PADDLE_Y);
       });
     } else if (name === 'shrink-paddle') {
       this.paddleCenterMul = Math.max(0.55, this.paddleCenterMul * 0.72);
-      this.buildPaddle(this.paddleRoot.y);
+      this.buildPaddle(PADDLE_Y);
       this.time.delayedCall(15000, () => {
         this.paddleCenterMul = 1;
-        this.buildPaddle(this.paddleRoot.y);
+        this.buildPaddle(PADDLE_Y);
       });
     } else if (name === 'score') {
       /* score already applied via def.score */
@@ -762,9 +770,9 @@ export class MainGame extends Phaser.Scene {
     const b = this.physics.add.image(x, y, key) as Phaser.Physics.Arcade.Image;
     b.setDepth(18);
     const body = b.body as Phaser.Physics.Arcade.Body;
+    body.setAllowGravity(false);
     b.setData('typeId', typeId);
-    const ang = Phaser.Math.FloatBetween(-40, 40);
-    body.setVelocity(Math.sin(Phaser.Math.DegToRad(ang)) * 45, Phaser.Math.FloatBetween(55, 95));
+    body.setVelocity(0, 92);
     this.bonusGroup.add(b);
   }
 
@@ -795,10 +803,6 @@ export class MainGame extends Phaser.Scene {
 
   private roundWon() {
     if (this.pausedForUi) return;
-    tryUnlockAchievement('stage_clear');
-    if (this.levelIndex >= 4) tryUnlockAchievement('reach_5');
-    if (this.levelIndex >= 19) tryUnlockAchievement('reach_20');
-    if (this.levelIndex >= SPACE_LEVEL_STRINGS.length - 1) tryUnlockAchievement('all_stages');
     this.pausedForUi = true;
     this.physics.pause();
     this.bonusGroup.clear(true, true);
@@ -816,16 +820,53 @@ export class MainGame extends Phaser.Scene {
     }
     const user = getStoredUsername();
     if (user.length >= 2) {
-      void fetchProfile(user).then((p) => {
+      void fetchProfile(user).then(async (p) => {
         if (p === null || p === false) return;
-        void pushProfile(user, {
-          maxUnlockedLevelIndex: Math.max(p.maxUnlockedLevelIndex | 0, this.maxUnlocked),
+        const levelScore = Math.max(0, this.score - this.scoreAtLevelStart);
+        const timeSec = Math.max(1, Math.floor((Date.now() - this.levelStartMs) / 1000));
+        const deltaPlay = Math.floor(this.sessionPlayMs);
+
+        const st = p.stats;
+        const roundsWon = (st.roundsWon | 0) + 1;
+        const beat = this.levelIndex + 1;
+        const maxLevelBeat = Math.max(st.maxLevelBeat | 0, beat);
+        const totalScore = (st.totalScore | 0) + levelScore;
+        const bestSessionScore = Math.max(st.bestSessionScore | 0, this.score);
+        const highScore = Math.max(st.highScore | 0, this.score, bestSessionScore, getLocalHighScore());
+        let fastestRoundSec = st.fastestRoundSec | 0;
+        if (!fastestRoundSec || timeSec < fastestRoundSec) fastestRoundSec = timeSec;
+        let fullLivesWins = st.fullLivesWins | 0;
+        if (this.lives >= 3) fullLivesWins++;
+        const playTimeMs = (st.playTimeMs | 0) + deltaPlay;
+
+        const cap = Math.max(0, SPACE_LEVEL_STRINGS.length - 1);
+        const nextUnlock = Math.min(cap, this.levelIndex + 1);
+        const maxUnlockedLevelIndex = Math.max(
+          p.maxUnlockedLevelIndex | 0,
+          nextUnlock,
+          this.maxUnlocked
+        );
+
+        const merged: Partial<Profile> = {
+          maxUnlockedLevelIndex,
           stats: {
-            ...p.stats,
-            highScore: Math.max(p.stats.highScore | 0, getLocalHighScore(), this.score),
-            roundsWon: (p.stats.roundsWon | 0) + 1,
+            ...st,
+            roundsWon,
+            maxLevelBeat,
+            totalScore,
+            bestSessionScore,
+            highScore,
+            fastestRoundSec,
+            fullLivesWins,
+            playTimeMs,
           },
-        });
+        };
+
+        const put = await pushProfile(user, merged);
+        if (put) {
+          this.sessionPlayMs = 0;
+          void syncEvaluatedAchievementsToCloud(put, { sessionScore: this.score });
+        }
       });
     }
     this.add
@@ -856,7 +897,11 @@ export class MainGame extends Phaser.Scene {
     this.physics.pause();
     if (this.score > getLocalHighScore()) setLocalHighScore(this.score);
     const user = getStoredUsername();
-    if (user.length >= 2) void sessionEnd(user, this.score);
+    if (user.length >= 2) {
+      void sessionEnd(user, this.score).then((res) => {
+        if (res?.profile) void syncEvaluatedAchievementsToCloud(res.profile, { sessionScore: this.score });
+      });
+    }
     this.add
       .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 30, 'Game over', uiStyle({
         fontSize: '40px',
@@ -947,13 +992,15 @@ export class MainGame extends Phaser.Scene {
     }
 
     this.levelText.setText(`${index + 1}/${SPACE_LEVEL_STRINGS.length} · ${parsed.name}`);
+    this.levelStartMs = Date.now();
+    this.scoreAtLevelStart = this.score;
+    this.livesAtLevelStart = this.lives;
     this.spawnBall(this.paddleRoot.x, this.paddleRoot.y - 24, true, 'normal');
     this.hintText.setVisible(true);
   }
 
   private refreshHud() {
     if (this.score > getLocalHighScore()) setLocalHighScore(this.score);
-    if (this.score >= 10000) tryUnlockAchievement('score_10k');
     this.scoreText.setText(`Score ${this.score}  ·  Best ${getLocalHighScore()}`);
     this.livesText.setText(`Lives ${this.lives}`);
     this.timeText.setText(this.formatSessionClock(Date.now() - this.sessionStartWall));
@@ -970,6 +1017,12 @@ export class MainGame extends Phaser.Scene {
 
     this.hitSparks.update(d);
     this.updateParallaxBackgrounds();
+    this.sessionPlayMs += dt;
+
+    this.paddleRoot.setY(PADDLE_Y);
+    const pBody = this.paddleRoot.body as Phaser.Physics.Arcade.Body;
+    pBody.setVelocity(0, 0);
+    pBody.updateFromGameObject();
 
     if (this.speedDial) {
       const ball = this.getPrimaryBall();
@@ -987,7 +1040,6 @@ export class MainGame extends Phaser.Scene {
       updateBallTrail(ball);
       if (ball.getData('onPaddle')) return;
       const body = ball.body as Phaser.Physics.Arcade.Body;
-      this.clampBallMotion(body);
       const blocked = body.blocked;
       const prevU = !!ball.getData('wallU');
       const prevL = !!ball.getData('wallL');
@@ -1004,7 +1056,8 @@ export class MainGame extends Phaser.Scene {
       const b = o as Phaser.Physics.Arcade.Image;
       if (!b.active) return;
       const body = b.body as Phaser.Physics.Arcade.Body;
-      body.velocity.x += Math.sin(this.time.now / 320) * 12 * d;
+      const vx = Math.sin(this.time.now / 320) * 55;
+      body.setVelocity(vx, 88);
       if (b.y > GAME_HEIGHT + 40) b.destroy();
     });
 

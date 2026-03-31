@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { IMG, SND } from '../game/assetBase';
+import { IMG, SND_DUAL } from '../game/assetBase';
 import { uiStyle } from '../game/uiFonts';
 import { runWelcomeFlow } from '../ui/welcomeGate';
 import { BONUS_TYPES, bonusTextureFolder } from '../game/bonusesData';
@@ -93,18 +93,19 @@ export class PreloadScene extends Phaser.Scene {
       }
     }
 
-    this.load.audio('s-block-1', SND('block-hit-1.ogg'));
-    this.load.audio('s-block-2', SND('block-hit-2.ogg'));
-    this.load.audio('s-block-3', SND('block-hit-3.ogg'));
-    this.load.audio('s-block-4', SND('block-hit-4.ogg'));
-    this.load.audio('s-block-ind', SND('block-indestructible-hit.ogg'));
-    this.load.audio('s-bonus', SND('bonus-catch.ogg'));
-    this.load.audio('s-paddle', SND('paddle-hit.ogg'));
-    this.load.audio('s-wall', SND('wall-hit.ogg'));
-    this.load.audio('s-win', SND('win.ogg'));
-    this.load.audio('s-lost', SND('lost-ball.ogg'));
-    this.load.audio('s-gun', SND('gun.ogg'));
-    this.load.audio('s-music', SND('music.ogg'));
+    const sfx = (key: string, base: string) => this.load.audio(key, SND_DUAL(base));
+    sfx('s-block-1', 'block-hit-1');
+    sfx('s-block-2', 'block-hit-2');
+    sfx('s-block-3', 'block-hit-3');
+    sfx('s-block-4', 'block-hit-4');
+    sfx('s-block-ind', 'block-indestructible-hit');
+    sfx('s-bonus', 'bonus-catch');
+    sfx('s-paddle', 'paddle-hit');
+    sfx('s-wall', 'wall-hit');
+    sfx('s-win', 'win');
+    sfx('s-lost', 'lost-ball');
+    sfx('s-gun', 'gun');
+    sfx('s-music', 'music');
 
     this.load.spritesheet('b-101_gray-anim', IMG('blocks/101_gray/anim.png'), {
       frameWidth: 38,

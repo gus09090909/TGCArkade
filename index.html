@@ -13,7 +13,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet" />
     <style>
-      html, body {
+      html,
+      body {
         margin: 0;
         width: 100%;
         height: 100%;
@@ -21,7 +22,7 @@
         background: #050810;
         overflow: hidden;
         touch-action: none;
-        font-family: "VT323", system-ui, sans-serif;
+        font-family: 'VT323', system-ui, sans-serif;
         -webkit-tap-highlight-color: transparent;
       }
       #game-root {
@@ -36,274 +37,107 @@
       .tgc-hidden {
         display: none !important;
       }
-      #tgc-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 1000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 16px;
-        box-sizing: border-box;
-      }
-      #tgc-overlay .tgc-backdrop {
-        position: absolute;
-        inset: 0;
-        background: rgba(5, 8, 18, 0.82);
-      }
-      #tgc-overlay .tgc-panel {
-        position: relative;
-        width: min(420px, 100%);
-        max-height: min(520px, 90vh);
-        overflow: auto;
-        background: linear-gradient(165deg, #1a2332 0%, #0f1419 100%);
-        border: 1px solid rgba(144, 202, 249, 0.25);
-        border-radius: 12px;
-        padding: 20px 20px 16px;
-        color: #eceff1;
-        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
-      }
-      .tgc-close {
-        position: absolute;
-        top: 8px;
-        right: 10px;
-        border: none;
-        background: transparent;
-        color: #90a4ae;
-        font-size: 26px;
-        line-height: 1;
-        cursor: pointer;
-        padding: 4px 8px;
-      }
-      .tgc-close:hover {
-        color: #fff;
-      }
-      .tgc-tabs {
-        display: flex;
-        gap: 8px;
-        margin-bottom: 16px;
-        margin-top: 8px;
-      }
-      .tgc-tabs button {
-        flex: 1;
-        padding: 10px;
-        border-radius: 8px;
-        border: 1px solid rgba(144, 202, 249, 0.2);
-        background: rgba(0, 0, 0, 0.25);
-        color: #b0bec5;
-        cursor: pointer;
-        font-size: 14px;
-      }
-      .tgc-tabs button.tgc-active {
-        background: rgba(92, 107, 192, 0.35);
-        color: #fff;
-        border-color: rgba(144, 202, 249, 0.45);
-      }
-      .tgc-tab label {
-        display: block;
-        font-size: 13px;
-        color: #90a4ae;
-        margin-bottom: 6px;
-      }
-      #tgc-username {
-        width: 100%;
-        box-sizing: border-box;
-        padding: 10px 12px;
-        border-radius: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        background: rgba(0, 0, 0, 0.35);
-        color: #fff;
-        font-size: 15px;
-        margin-bottom: 12px;
-      }
-      #tgc-save-profile {
-        width: 100%;
-        padding: 11px;
-        border: none;
-        border-radius: 8px;
-        background: #5c6bc0;
-        color: #fff;
-        font-size: 15px;
-        cursor: pointer;
-        font-weight: 600;
-      }
-      #tgc-save-profile:hover {
-        background: #6f7dd2;
-      }
-      .tgc-msg {
-        min-height: 1.2em;
-        font-size: 13px;
-        color: #ffb74d;
-        margin: 10px 0 0;
-      }
-      .tgc-stats {
-        margin-top: 14px;
-        padding: 12px;
-        background: rgba(0, 0, 0, 0.28);
-        border-radius: 8px;
-        font-size: 13px;
-        line-height: 1.5;
-        color: #cfd8dc;
-        white-space: pre-wrap;
-        overflow: auto;
-        max-height: 200px;
-      }
-      #tgc-lb-list {
-        margin: 0;
-        padding-left: 22px;
-        font-size: 14px;
-        line-height: 1.65;
-        color: #eceff1;
-      }
-      #tgc-overlay .tgc-panel,
-      #tgc-overlay input,
-      #tgc-overlay button {
-        font-family: "VT323", system-ui, sans-serif;
-      }
-      #tgc-welcome {
-        position: fixed;
-        inset: 0;
-        z-index: 2000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
-        box-sizing: border-box;
-        background: rgba(5, 8, 18, 0.92);
-      }
-      #tgc-welcome .tgc-welcome-panel {
-        width: min(400px, 100%);
-        background: linear-gradient(165deg, #1a2332 0%, #0f1419 100%);
-        border: 1px solid rgba(144, 202, 249, 0.3);
-        border-radius: 12px;
-        padding: 22px;
-        color: #eceff1;
-        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-      }
-      #tgc-welcome h2 {
-        margin: 0 0 8px;
-        font-size: 22px;
-        font-family: "VT323", monospace;
-      }
-      #tgc-welcome p {
-        margin: 0 0 14px;
-        font-size: 16px;
-        color: #90a4ae;
-        line-height: 1.4;
-      }
-      #tgc-welcome-name {
-        width: 100%;
-        box-sizing: border-box;
-        padding: 10px 12px;
-        border-radius: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        background: rgba(0, 0, 0, 0.4);
-        color: #fff;
-        font-size: 18px;
-        font-family: "VT323", monospace;
-        margin-bottom: 12px;
-      }
-      #tgc-welcome-go {
-        width: 100%;
-        padding: 11px;
-        border: none;
-        border-radius: 8px;
-        background: #5c6bc0;
-        color: #fff;
-        font-size: 18px;
-        font-family: "VT323", monospace;
-        cursor: pointer;
-        font-weight: 600;
-      }
-      #tgc-welcome-go:hover {
-        background: #6f7dd2;
-      }
-      #tgc-welcome-err {
-        min-height: 1.2em;
-        font-size: 15px;
-        color: #ffb74d;
-        margin-top: 8px;
-      }
-      #tgc-ach-grid {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        max-height: 280px;
-        overflow: auto;
-        margin-top: 8px;
-      }
-      .tgc-ach-card {
-        display: flex;
-        gap: 12px;
-        align-items: flex-start;
-        padding: 10px 12px;
-        border-radius: 8px;
-        border: 1px solid rgba(144, 202, 249, 0.15);
-        background: rgba(0, 0, 0, 0.22);
-      }
-      .tgc-ach-card.tgc-ach-locked {
-        opacity: 0.55;
-      }
-      .tgc-ach-icon {
-        font-size: 22px;
-        line-height: 1;
-        color: #ffd54f;
-        flex-shrink: 0;
-      }
-      .tgc-ach-locked .tgc-ach-icon {
-        color: #546e7a;
-      }
-      .tgc-ach-title {
-        font-size: 17px;
-        color: #eceff1;
-        font-weight: 600;
-      }
-      .tgc-ach-desc {
-        font-size: 14px;
-        color: #90a4ae;
-        margin-top: 2px;
-        line-height: 1.35;
-      }
     </style>
   </head>
   <body oncontextmenu="return false;">
     <div id="game-root"></div>
 
-    <div id="tgc-welcome" class="tgc-hidden" aria-hidden="true">
-      <div class="tgc-welcome-panel">
-        <h2>Welcome to TGC Arkade</h2>
-        <p>Choose a player name (2–32 characters). It is used for cloud profile, leaderboard, and achievements.</p>
-        <input id="tgc-welcome-name" type="text" maxlength="32" autocomplete="username" placeholder="Your name" />
-        <button type="button" id="tgc-welcome-go">Continue</button>
-        <p id="tgc-welcome-err"></p>
+    <div
+      id="tgc-welcome"
+      class="tgc-welcome tgc-hidden"
+      aria-hidden="true"
+      data-welcome-bg="/assets/episodes/space/images/tgc-welcome-bg.png"
+    >
+      <div
+        class="tgc-welcome__photo"
+        style="background-image: url('/assets/episodes/space/images/tgc-welcome-bg.png')"
+      ></div>
+      <div class="tgc-welcome__backdrop"></div>
+      <div class="tgc-welcome__vignette"></div>
+      <div class="tgc-welcome__panel">
+        <header class="tgc-welcome__hero">
+          <div class="tgc-welcome__badge" id="tgc-welcome-badge"></div>
+          <h1 class="tgc-welcome__title">
+            <span class="tgc-welcome__title-main">TGC</span>
+            <span class="tgc-welcome__title-sep">·</span>
+            <span class="tgc-welcome__title-sub">ARKADE</span>
+          </h1>
+          <p class="tgc-welcome__tagline" id="tgc-welcome-tagline"></p>
+          <p class="tgc-welcome__hook" id="tgc-welcome-hook"></p>
+        </header>
+        <div class="tgc-welcome__card">
+          <div class="tgc-welcome__card-glow" aria-hidden="true"></div>
+          <label class="tgc-welcome__label" for="tgc-welcome-name" id="tgc-welcome-label"></label>
+          <input
+            id="tgc-welcome-name"
+            class="tgc-welcome__input"
+            type="text"
+            maxlength="24"
+            autocomplete="username"
+          />
+          <button type="button" class="tgc-welcome__btn" id="tgc-welcome-go">
+            <span class="tgc-welcome__btn-glow" aria-hidden="true"></span>
+            <span class="tgc-welcome__btn-label" id="tgc-welcome-go-label"></span>
+          </button>
+          <p id="tgc-welcome-err"></p>
+        </div>
       </div>
     </div>
 
-    <div id="tgc-overlay" class="tgc-hidden" aria-hidden="true">
+    <div id="tgc-overlay" class="tgc-hidden lbx-profile" aria-hidden="true">
       <div class="tgc-backdrop" aria-hidden="true"></div>
-      <div class="tgc-panel" role="dialog" aria-labelledby="tgc-dialog-title">
+      <div class="lbx-window tgc-profile-root" role="dialog" aria-labelledby="tgc-dialog-title">
         <button type="button" id="tgc-close" class="tgc-close" aria-label="Close">×</button>
-        <h2 id="tgc-dialog-title" style="margin: 0 0 4px; font-size: 20px; font-weight: 600">Player hub</h2>
-        <p style="margin: 0 0 12px; font-size: 14px; color: #90a4ae; line-height: 1.45">Profile, cloud sync, leaderboard, and achievements. Same API contract as the classic TGC-Arkade server.</p>
-        <nav class="tgc-tabs">
-          <button type="button" data-tab="profile" class="tgc-active">Profile</button>
-          <button type="button" data-tab="leaderboard">Leaderboard</button>
-          <button type="button" data-tab="achievements">Achievements</button>
-        </nav>
-        <div id="tgc-tab-profile" class="tgc-tab">
-          <label for="tgc-username">Player name (2–32 characters)</label>
-          <input id="tgc-username" maxlength="32" autocomplete="username" />
-          <button type="button" id="tgc-save-profile">Save &amp; sync</button>
-          <p id="tgc-profile-msg" class="tgc-msg"></p>
-          <pre id="tgc-profile-stats" class="tgc-stats"></pre>
-        </div>
-        <div id="tgc-tab-leaderboard" class="tgc-tab tgc-hidden">
-          <ol id="tgc-lb-list"></ol>
-          <p id="tgc-lb-status" class="tgc-msg"></p>
-        </div>
-        <div id="tgc-tab-achievements" class="tgc-tab tgc-hidden">
-          <p id="tgc-ach-status" class="tgc-msg"></p>
-          <div id="tgc-ach-grid"></div>
+        <div class="tgc-lbx-header" id="tgc-dialog-title"></div>
+        <div class="tgc-profile-body">
+          <nav class="tgc-profile-tabs">
+            <a href="#" data-tab="profile" class="tab-selected"></a>
+            <a href="#" data-tab="leaderboard"></a>
+          </nav>
+          <div id="tgc-tab-profile" class="tgc-tab-contents">
+            <div class="tgc-profile-user">
+              <div class="tgc-profile-avatar" aria-hidden="true">👤</div>
+              <div>
+                <div class="tgc-profile-name" id="tgc-profile-name">—</div>
+                <p class="tgc-profile-cloud" id="tgc-profile-cloud"></p>
+              </div>
+            </div>
+            <div class="tgc-profile-stats">
+              <div class="tgc-stat">
+                <span class="tgc-stat__label" id="lbl-tgc-stat-playtime"></span>
+                <span class="tgc-stat__val" id="tgc-stat-playtime">0</span>
+              </div>
+              <div class="tgc-stat">
+                <span class="tgc-stat__label" id="lbl-tgc-stat-totalscore"></span>
+                <span class="tgc-stat__val" id="tgc-stat-totalscore">0</span>
+              </div>
+              <div class="tgc-stat">
+                <span class="tgc-stat__label" id="lbl-tgc-stat-highscore"></span>
+                <span class="tgc-stat__val" id="tgc-stat-highscore">0</span>
+              </div>
+              <div class="tgc-stat">
+                <span class="tgc-stat__label" id="lbl-tgc-stat-deaths"></span>
+                <span class="tgc-stat__val" id="tgc-stat-deaths">0</span>
+              </div>
+              <div class="tgc-stat">
+                <span class="tgc-stat__label" id="lbl-tgc-stat-levels"></span>
+                <span class="tgc-stat__val" id="tgc-stat-levels">0</span>
+              </div>
+            </div>
+            <div class="tgc-profile-share">
+              <button type="button" class="tgc-btn tgc-btn--secondary" id="tgc-profile-copy"></button>
+              <button type="button" class="tgc-btn" id="tgc-profile-sync"></button>
+              <button type="button" class="tgc-btn tgc-btn--danger" id="tgc-profile-logout"></button>
+            </div>
+            <h3 class="tgc-ach-heading" id="tgc-ach-heading"></h3>
+            <div class="tgc-ach-grid" id="tgc-ach-grid"></div>
+            <p id="tgc-profile-msg" class="tgc-msg"></p>
+          </div>
+          <div id="tgc-tab-leaderboard" class="tgc-tab-contents tgc-hidden">
+            <p class="tgc-lb-live" id="tgc-lb-live">…</p>
+            <div id="tgc-lb-table"></div>
+            <p id="tgc-lb-status" class="tgc-msg"></p>
+          </div>
         </div>
       </div>
     </div>
