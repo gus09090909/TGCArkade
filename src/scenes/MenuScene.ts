@@ -17,11 +17,16 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create() {
+    document.body.classList.remove('tgc-playing-game');
     try {
       this.physics.world.resume();
     } catch {
       /* */
     }
+    if (this.sys.isPaused()) {
+      this.sys.resume();
+    }
+    this.input.enabled = true;
     this.scale.refresh();
     this.input.once('pointerdown', () => {
       this.sound.unlock();

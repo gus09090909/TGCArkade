@@ -37,6 +37,10 @@
       .tgc-hidden {
         display: none !important;
       }
+      /* In-game only: hide OS pointer over the Phaser canvas (DOM overlays keep default cursor). */
+      body.tgc-playing-game #game-root canvas {
+        cursor: none !important;
+      }
     </style>
   </head>
   <body oncontextmenu="return false;">

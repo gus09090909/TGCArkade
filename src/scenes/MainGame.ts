@@ -136,7 +136,10 @@ export class MainGame extends Phaser.Scene {
     this.paddleGun = false;
     this.paddleCenterMul = 1;
 
+    document.body.classList.add('tgc-playing-game');
+
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      document.body.classList.remove('tgc-playing-game');
       this.events.off(Phaser.Scenes.Events.POST_UPDATE, this.applyManualBallWalls, this);
       this.overlayPausedPhysics = false;
       this.glueExpireTimer?.remove(false);
@@ -325,14 +328,36 @@ export class MainGame extends Phaser.Scene {
   }
 
   private goToMenu() {
+    document.body.classList.remove('tgc-playing-game');
+    try {
+      document.exitPointerLock();
+    } catch {
+      /* */
+    }
+
     this.overlayPausedPhysics = false;
+    this.pausedForUi = false;
+    this.userPaused = false;
+    this.pauseLayer?.destroy(true);
+    this.pauseLayer = undefined;
+
     try {
       this.physics.resume();
     } catch {
       /* */
     }
+    try {
+      this.tweens.killAll();
+    } catch {
+      /* */
+    }
+    try {
+      this.time.removeAllEvents();
+    } catch {
+      /* */
+    }
+
     closeTgcOverlay();
-    if (this.userPaused) this.clearUserPause();
     this.scene.start('MenuScene');
   }
 
@@ -842,7 +867,7 @@ export class MainGame extends Phaser.Scene {
    * we do the same here after the physics step (no engine wall collision on the ball).
    */
   private applyManualBallWalls() {
-    if (this.pausedForUi || this.userPaused) return;
+    if (this.pausedForUi || this.userPaused || this.overlayPausedPhysics) return;
 
     this.ballGroup.getChildren().forEach((o) => {
       const ball = o as Phaser.Physics.Arcade.Image;

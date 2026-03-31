@@ -59,6 +59,12 @@ export class LevelSelectScene extends Phaser.Scene {
   }
 
   create() {
+    document.body.classList.remove('tgc-playing-game');
+    try {
+      this.physics.world.resume();
+    } catch {
+      /* */
+    }
     this.cameras.main.setBackgroundColor(0x050810);
     this.add
       .rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0a0e1a, 0.96)
