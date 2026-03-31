@@ -4,6 +4,7 @@ services:
   - type: web
     name: tgc-arkade
     runtime: node
+    # Install includes Vite + TypeScript (needed when NODE_ENV=production skips devDependencies).
     buildCommand: npm install && npm run build
     startCommand: npm start
     envVars:
