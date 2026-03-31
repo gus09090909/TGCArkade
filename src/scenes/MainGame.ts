@@ -744,8 +744,8 @@ export class MainGame extends Phaser.Scene {
     let vy = body.velocity.y;
     const sp = Math.hypot(vx, vy);
 
-    if (sp < 50) {
-      const a = -Math.PI / 2 + Phaser.Math.FloatBetween(-0.5, 0.5);
+    if (sp < 65) {
+      const a = -Math.PI / 2 + Phaser.Math.FloatBetween(-0.55, 0.55);
       body.setVelocity(Math.cos(a) * target, Math.sin(a) * target);
       return;
     }
@@ -1249,12 +1249,20 @@ export class MainGame extends Phaser.Scene {
       const prevU = !!ball.getData('wallU');
       const prevL = !!ball.getData('wallL');
       const prevR = !!ball.getData('wallR');
-      if ((blocked.up && !prevU) || (blocked.left && !prevL) || (blocked.right && !prevR)) {
+      const newWallHit =
+        (blocked.up && !prevU) || (blocked.left && !prevL) || (blocked.right && !prevR);
+      if (newWallHit) {
         this.playSfx('s-wall');
+        this.ensureBallSpeed(body, ball.y);
       }
       ball.setData('wallU', blocked.up);
       ball.setData('wallL', blocked.left);
       ball.setData('wallR', blocked.right);
+
+      const sp = Math.hypot(body.velocity.x, body.velocity.y);
+      if (sp < this.ballSpeed * 0.38) {
+        this.ensureBallSpeed(body, ball.y);
+      }
     });
 
     this.bonusGroup.getChildren().forEach((o) => {
