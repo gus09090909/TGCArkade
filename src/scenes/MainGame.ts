@@ -670,28 +670,30 @@ export class MainGame extends Phaser.Scene {
     ball.setData('lastPaddleBounceAt', this.time.now);
 
     const body = ball.body as Phaser.Physics.Arcade.Body;
+    const vyIn = body.velocity.y;
+    /** Ball falling toward the paddle (Phaser Y+ = down). */
+    const comingDown = vyIn > 8;
     const r = body.halfWidth;
     const padTop = this.paddleTopY();
     ball.y = padTop - r - 6;
     body.updateFromGameObject();
 
-    const paddleLeft = this.paddleHit.x - this.paddleHit.width / 2;
-    const w = Math.max(1, this.paddleHit.width);
-    const bounceAngle = 1;
-    const normX =
-      (1 - (2 * (ball.x - paddleLeft)) / w) * bounceAngle;
-    const fromAbove = this.paddleTopY() > ball.y;
-    const sp = this.ballSpeedCurrent;
-    if (fromAbove) {
-      const vx = -sp * Math.sin(normX);
-      const vy = -sp * Math.cos(normX);
-      body.setVelocity(vx, vy);
+    const halfPadW = Math.max(1, this.paddleHit.width * 0.5);
+    const relX = Phaser.Math.Clamp((ball.x - this.paddleHit.x) / halfPadW, -1, 1);
+    const maxAngle = 1.02;
+    const angle = relX * maxAngle;
+    const sp = Phaser.Math.Clamp(this.ballSpeedCurrent, this.ballSpeedStart, this.ballSpeedMax);
+
+    if (comingDown) {
+      body.setVelocity(Math.sin(angle) * sp, -Math.cos(angle) * sp);
     } else {
-      body.setVelocity(-body.velocity.x, body.velocity.y);
+      const side = Math.sign(ball.x - this.paddleHit.x) || relX || 1;
+      body.setVelocity(side * sp * 0.72, -sp * 0.62);
+      this.normalizeBallSpeed(body, true);
     }
 
     if (!this.glue) {
-      this.bumpBallSpeed(ball.getData('steel') ? 5 : 9);
+      this.bumpBallSpeed(ball.getData('steel') ? 4 : 5);
       this.normalizeBallSpeed(body, true);
     }
 
@@ -915,30 +917,39 @@ export class MainGame extends Phaser.Scene {
       return;
     }
 
-    const bx = ball.body.x + body.width / 2;
-    const by = ball.body.y + body.height / 2;
-    const cx = block.body.x + block.body.width / 2;
-    const cy = block.body.y + block.body.height / 2;
+    const sb = block.body as Phaser.Physics.Arcade.StaticBody;
+    const r = body.halfWidth;
+    const bx = ball.x;
+    const by = ball.y;
+    const cx = block.x;
+    const cy = block.y;
     const dx = bx - cx;
     const dy = by - cy;
-    const absX = Math.abs(dx);
-    const absY = Math.abs(dy);
-    const pw = body.halfWidth + (block.body as Phaser.Physics.Arcade.StaticBody).halfWidth;
-    const ph = body.halfHeight + (block.body as Phaser.Physics.Arcade.StaticBody).halfHeight;
+    const hw = sb.halfWidth;
+    const hh = sb.halfHeight;
+    const overlapX = hw + r - Math.abs(dx);
+    const overlapY = hh + r - Math.abs(dy);
+    if (overlapX <= 0 || overlapY <= 0) return;
 
-    let nx = 0;
-    let ny = 0;
-    if (absX * ph < absY * pw) {
-      ny = Math.sign(dy) * (ph - absY + 0.5);
+    const indestructible = !bd.destroyable;
+    const sepExtra = indestructible ? 1.35 : 0.7;
+    const tie = 1.15;
+    let useVerticalSep: boolean;
+    if (overlapX < overlapY - tie) {
+      useVerticalSep = false;
+    } else if (overlapY < overlapX - tie) {
+      useVerticalSep = true;
+    } else {
+      useVerticalSep = Math.abs(body.velocity.x) < Math.abs(body.velocity.y);
+    }
+
+    if (useVerticalSep) {
+      ball.y += Math.sign(dy) * (overlapY + sepExtra);
       body.velocity.y *= -1;
     } else {
-      nx = Math.sign(dx) * (pw - absX + 0.5);
+      ball.x += Math.sign(dx) * (overlapX + sepExtra);
       body.velocity.x *= -1;
     }
-    const push =
-      steel && !bd.destroyable ? 4.5 : steel ? 2.5 : 1;
-    ball.x += nx * push;
-    ball.y += ny * push;
     body.updateFromGameObject();
 
     this.hitSparks.burst(ball.x, ball.y);
@@ -946,8 +957,9 @@ export class MainGame extends Phaser.Scene {
       setBallTrailFromBlock(ball, bd.typeId);
     }
 
-    bd.immuneUntil = now + (steel ? 42 : 28);
-    this.bumpBallSpeed(ball.getData('steel') ? 5 : 7);
+    bd.immuneUntil = now + (indestructible ? 52 : steel ? 42 : 30);
+    const bumpAmt = indestructible ? 3 : steel ? 5 : 7;
+    this.bumpBallSpeed(bumpAmt);
 
     if (!bd.destroyable) {
       this.playBlockHit(true);
@@ -1185,7 +1197,12 @@ export class MainGame extends Phaser.Scene {
       if (ref && !ref.getData('onPaddle')) {
         const body = ref.body as Phaser.Physics.Arcade.Body;
         const ang = Math.atan2(body.velocity.y, body.velocity.x);
-        const sp = Math.hypot(body.velocity.x, body.velocity.y) || this.ballSpeedCurrent;
+        const raw = Math.hypot(body.velocity.x, body.velocity.y);
+        const sp = Phaser.Math.Clamp(
+          raw > 1 ? raw : this.ballSpeedCurrent,
+          this.ballSpeedStart,
+          this.ballSpeedMax
+        );
         const mk = (da: number) => {
           const b = this.spawnBall(ref.x, ref.y, false, ref.getData('size'));
           const bdy = b.body as Phaser.Physics.Arcade.Body;
@@ -1397,7 +1414,7 @@ export class MainGame extends Phaser.Scene {
         /* */
       }
     }
-    const sp = Math.max(48, this.ballSpeedCurrent);
+    const sp = Phaser.Math.Clamp(this.ballSpeedCurrent, this.ballSpeedStart, this.ballSpeedMax);
     this.ballGroup.getChildren().forEach((o) => {
       const b = o as Phaser.Physics.Arcade.Image;
       if (!b.active || !b.body) return;
