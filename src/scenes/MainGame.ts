@@ -113,6 +113,9 @@ export class MainGame extends Phaser.Scene {
   /** Lives lost this run (balls dropped), sent as deathsDelta on game over. */
   private sessionBallsLost = 0;
   private sessionPlayMs = 0;
+  /** Play time already applied on the server this run (avoids double-counting). */
+  private sessionPlayMsReportedToCloud = 0;
+  private cloudHeartbeat?: Phaser.Time.TimerEvent;
   /** Original bonus used ~speedStep 4 with curved path; straight drop was tuned too fast at 152. */
   private readonly bonusFallPxPerSec = 78;
   /** Balls spawned on the paddle — launch does not rely on `getData('onPaddle')` alone. */
@@ -193,6 +196,8 @@ export class MainGame extends Phaser.Scene {
     document.body.classList.add('tgc-playing-game');
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.cloudHeartbeat?.remove(false);
+      this.cloudHeartbeat = undefined;
       const root = document.getElementById('game-root');
       if (root && this.gameRootPointerDown) {
         root.removeEventListener('pointerdown', this.gameRootPointerDown, { capture: true });
@@ -368,6 +373,37 @@ export class MainGame extends Phaser.Scene {
 
     this.loadLevel(this.levelIndex);
     this.refreshHud();
+
+    this.sessionPlayMsReportedToCloud = keepSession ? this.sessionPlayMs : 0;
+    this.cloudHeartbeat?.remove(false);
+    const cloudUser = getStoredUsername();
+    if (cloudUser.length >= 2) {
+      this.cloudHeartbeat = this.time.addEvent({
+        delay: 10000,
+        loop: true,
+        callback: () => this.pushCloudPlaySessionProgress(),
+      });
+    }
+  }
+
+  /** Push play time (and achievement checks) to the cloud while a run is in progress. */
+  private pushCloudPlaySessionProgress() {
+    if (this.pausedForUi || this.userPaused || this.overlayPausedPhysics) return;
+    const user = getStoredUsername();
+    if (user.length < 2) return;
+    const addMs = Math.max(0, Math.floor(this.sessionPlayMs - this.sessionPlayMsReportedToCloud));
+    if (addMs < 3000) return;
+    void fetchProfile(user).then((p) => {
+      if (p === null || p === false) return;
+      const st = p.stats;
+      const playTimeMs = (st.playTimeMs | 0) + addMs;
+      void pushProfile(user, { stats: { ...st, playTimeMs } }).then((put) => {
+        if (!put) return;
+        this.sessionPlayMsReportedToCloud = this.sessionPlayMs;
+        mergeCloudMaxLevelIntoLocal(put.maxUnlockedLevelIndex | 0, SPACE_LEVEL_STRINGS.length - 1);
+        void syncEvaluatedAchievementsToCloud(put, { sessionScore: this.score });
+      });
+    });
   }
 
   private playSfx(key: string) {
@@ -1480,7 +1516,7 @@ export class MainGame extends Phaser.Scene {
         if (p === null || p === false) return;
         const levelScore = Math.max(0, this.score - this.scoreAtLevelStart);
         const timeSec = Math.max(1, Math.floor((Date.now() - this.levelStartMs) / 1000));
-        const deltaPlay = Math.max(0, Math.floor(this.sessionPlayMs - this.playMsAtLevelStart));
+        const deltaPlay = Math.max(0, Math.floor(this.sessionPlayMs - this.sessionPlayMsReportedToCloud));
 
         const st = p.stats;
         const roundsWon = (st.roundsWon | 0) + 1;
@@ -1520,6 +1556,7 @@ export class MainGame extends Phaser.Scene {
 
         const put = await pushProfile(user, merged);
         if (put) {
+          this.sessionPlayMsReportedToCloud = this.sessionPlayMs;
           void syncEvaluatedAchievementsToCloud(put, { sessionScore: this.score });
         }
       });
@@ -1559,10 +1596,16 @@ export class MainGame extends Phaser.Scene {
     const user = getStoredUsername();
     if (user.length >= 2) {
       const cap = SPACE_LEVEL_STRINGS.length - 1;
-      const deltaPlay = Math.max(0, Math.floor(this.sessionPlayMs - this.playMsAtLevelStart));
+      const deltaPlay = Math.max(0, Math.floor(this.sessionPlayMs - this.sessionPlayMsReportedToCloud));
       const deathsDelta = Math.max(1, this.sessionBallsLost | 0);
-      void sessionEnd(user, this.score, { playTimeMsDelta: deltaPlay, deathsDelta }).then((res) => {
+      const totalScoreDelta = Math.max(0, this.score - this.scoreAtLevelStart);
+      void sessionEnd(user, this.score, {
+        playTimeMsDelta: deltaPlay,
+        deathsDelta,
+        totalScoreDelta,
+      }).then((res) => {
         if (res?.profile) {
+          this.sessionPlayMsReportedToCloud = this.sessionPlayMs;
           mergeCloudMaxLevelIntoLocal(res.profile.maxUnlockedLevelIndex | 0, cap);
           void syncEvaluatedAchievementsToCloud(res.profile, { sessionScore: this.score });
         }

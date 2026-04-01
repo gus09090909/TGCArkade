@@ -6,6 +6,7 @@ import { syncBgm } from '../game/bgm';
 import { openTgcOverlay, setTgcOverlayContext } from '../ui/tgcOverlay';
 import { SPACE_LEVEL_STRINGS } from '../data/spaceLevels';
 import { fetchProfile, getStoredUsername, mergeCloudMaxLevelIntoLocal } from '../api/tgcCloud';
+import { mergeServerAchievementIds } from '../game/achievements';
 
 const DASH_W = 417;
 const DASH_H = 214;
@@ -48,6 +49,7 @@ export class MenuScene extends Phaser.Scene {
     if (user.length >= 2) {
       void fetchProfile(user).then((p) => {
         if (p && typeof p === 'object' && p.maxUnlockedLevelIndex != null) {
+          mergeServerAchievementIds(p.achievements);
           mergeCloudMaxLevelIntoLocal(p.maxUnlockedLevelIndex | 0, cap);
         }
       });

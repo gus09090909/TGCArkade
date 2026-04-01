@@ -79,10 +79,18 @@ function renderAchievementTiles(remote: Record<string, number> | undefined) {
   }
 }
 
+function formatPlayTimeMs(ms: number): string {
+  const m = Math.max(0, ms | 0);
+  if (m < 60_000) return '<1 min';
+  if (m < 3_600_000) return `${Math.floor(m / 60_000)} min`;
+  const h = Math.floor(m / 3_600_000);
+  const min = Math.floor((m % 3_600_000) / 60_000);
+  return min > 0 ? `${h}h ${min}m` : `${h}h`;
+}
+
 function fillProfileStats(p: Profile) {
   const s = p.stats;
-  const ptMin = Math.floor((s.playTimeMs | 0) / 60000);
-  $('tgc-stat-playtime').textContent = `${ptMin} min`;
+  $('tgc-stat-playtime').textContent = formatPlayTimeMs(s.playTimeMs | 0);
   $('tgc-stat-totalscore').textContent = String(s.totalScore | 0);
   const bestRun = Math.max(s.bestSessionScore | 0, s.highScore | 0);
   $('tgc-stat-highscore').textContent = String(bestRun);
@@ -101,6 +109,27 @@ export function initTgcOverlayDom() {
   const lbStatus = $('tgc-lb-status');
 
   let activeTab: 'profile' | 'leaderboard' = 'profile';
+  let overlayVisible = false;
+  let pollLb: ReturnType<typeof setInterval> | undefined;
+  let pollProfile: ReturnType<typeof setInterval> | undefined;
+
+  function stopCloudPolls() {
+    if (pollLb) clearInterval(pollLb);
+    if (pollProfile) clearInterval(pollProfile);
+    pollLb = pollProfile = undefined;
+  }
+
+  function startCloudPolls() {
+    stopCloudPolls();
+    pollLb = setInterval(() => {
+      if (!overlayVisible || activeTab !== 'leaderboard') return;
+      void loadLeaderboard({ silent: true });
+    }, 4000);
+    pollProfile = setInterval(() => {
+      if (!overlayVisible || activeTab !== 'profile') return;
+      void refreshProfileTab({ silent: true });
+    }, 5000);
+  }
 
   function showTab(which: 'profile' | 'leaderboard') {
     activeTab = which;
@@ -110,19 +139,24 @@ export function initTgcOverlayDom() {
       const el = a as HTMLAnchorElement;
       el.classList.toggle('tab-selected', el.dataset.tab === which);
     });
-    if (which === 'leaderboard') void loadLeaderboard();
+    if (which === 'leaderboard') void loadLeaderboard({ silent: false });
   }
 
-  async function loadLeaderboard() {
-    lbStatus.textContent = '';
+  async function loadLeaderboard(opts?: { silent?: boolean }) {
+    const silent = opts?.silent === true;
+    if (!silent) lbStatus.textContent = '';
     const live = $('tgc-lb-live');
     const table = $('tgc-lb-table');
-    live.textContent = '…';
-    table.innerHTML = '';
+    if (!silent) {
+      live.textContent = '…';
+      table.innerHTML = '';
+    }
     const data = await fetchLeaderboard();
     if (!data) {
-      live.textContent = '';
-      table.innerHTML = `<p class="tgc-lb-empty">${S.lbError}</p>`;
+      if (!silent) {
+        live.textContent = '';
+        table.innerHTML = `<p class="tgc-lb-empty">${S.lbError}</p>`;
+      }
       return;
     }
     const t = new Date(data.updatedAt || Date.now());
@@ -148,8 +182,9 @@ export function initTgcOverlayDom() {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  async function refreshProfileTab() {
-    msg.textContent = '';
+  async function refreshProfileTab(opts?: { silent?: boolean }) {
+    const silent = opts?.silent === true;
+    if (!silent) msg.textContent = '';
     const name = getStoredUsername();
     $('tgc-profile-name').textContent = name.length >= 2 ? name : '—';
     $('tgc-profile-cloud').textContent = apiLikelyConfigured() ? S.profileCloudOn : S.profileCloudOff;
@@ -166,7 +201,7 @@ export function initTgcOverlayDom() {
 
     const p = await fetchProfile(name);
     if (p === false) {
-      msg.textContent = 'No server profile yet — press Sync now after playing.';
+      if (!silent) msg.textContent = 'No server profile yet — press Sync now after playing.';
       $('tgc-stat-playtime').textContent = '—';
       $('tgc-stat-totalscore').textContent = '—';
       $('tgc-stat-highscore').textContent = String(getLocalHighScore());
@@ -181,7 +216,7 @@ export function initTgcOverlayDom() {
       return;
     }
     if (p === null) {
-      msg.textContent = 'Could not reach API.';
+      if (!silent) msg.textContent = 'Could not reach API. Is the server running (npm start on port 3847)?';
       $('tgc-stat-playtime').textContent = '—';
       $('tgc-stat-totalscore').textContent = '—';
       $('tgc-stat-highscore').textContent = String(getLocalHighScore());
@@ -278,14 +313,18 @@ export function initTgcOverlayDom() {
   function open() {
     overlay.classList.remove(HIDDEN);
     overlay.setAttribute('aria-hidden', 'false');
+    overlayVisible = true;
     ctx.onOpen();
     void refreshProfileTab();
     showTab(activeTab);
+    startCloudPolls();
   }
 
   function close() {
     overlay.classList.add(HIDDEN);
     overlay.setAttribute('aria-hidden', 'true');
+    overlayVisible = false;
+    stopCloudPolls();
     ctx.onClose();
   }
 

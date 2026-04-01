@@ -556,6 +556,10 @@
 }
 
 #tgc-overlay .tgc-stat__label {
+  white-space: normal;
+  word-break: break-word;
+  hyphens: auto;
+  min-width: 0;
   display: block;
   font-size: 10px;
   text-transform: uppercase;

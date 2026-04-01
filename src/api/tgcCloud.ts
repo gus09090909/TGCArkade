@@ -40,6 +40,8 @@ export type SessionEndOptions = {
   playTimeMsDelta?: number;
   /** Add to profile deaths (e.g. balls lost this run). Default 1 if omitted. */
   deathsDelta?: number;
+  /** Points earned this run not yet stored (current level since last stage clear). */
+  totalScoreDelta?: number;
 };
 
 const LS_MAX_LEVEL = 'tgc_max_level';
@@ -120,6 +122,9 @@ export async function sessionEnd(
   }
   if (opts?.deathsDelta != null && opts.deathsDelta > 0) {
     body.deathsDelta = Math.min(Math.floor(opts.deathsDelta), 999);
+  }
+  if (opts?.totalScoreDelta != null && opts.totalScoreDelta > 0) {
+    body.totalScoreDelta = Math.min(Math.floor(opts.totalScoreDelta), 999_999_999);
   }
   const res = await fetch(apiUrl('/api/session-end'), {
     method: 'POST',

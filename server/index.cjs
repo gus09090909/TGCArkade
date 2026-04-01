@@ -148,6 +148,7 @@ app.post('/api/session-end', (req, res) => {
   const name = ((req.body && req.body.username) || '').trim();
   const sessionScore = parseInt(req.body && req.body.sessionScore, 10) || 0;
   const playDelta = parseInt(req.body && req.body.playTimeMsDelta, 10) || 0;
+  const totalScoreDelta = parseInt(req.body && req.body.totalScoreDelta, 10) || 0;
   const deathsDeltaRaw = parseInt(req.body && req.body.deathsDelta, 10);
   const deathsDelta =
     Number.isFinite(deathsDeltaRaw) && deathsDeltaRaw > 0 ? Math.min(deathsDeltaRaw, 999) : 1;
@@ -161,6 +162,9 @@ app.post('/api/session-end', (req, res) => {
   p.stats.deaths = (p.stats.deaths | 0) + deathsDelta;
   if (playDelta > 0 && playDelta <= 86400000) {
     p.stats.playTimeMs = (p.stats.playTimeMs | 0) + playDelta;
+  }
+  if (totalScoreDelta > 0 && totalScoreDelta <= 999999999) {
+    p.stats.totalScore = (p.stats.totalScore | 0) + totalScoreDelta;
   }
   if (sessionScore > (p.stats.bestSessionScore | 0)) p.stats.bestSessionScore = sessionScore;
   if (sessionScore > (p.stats.highScore | 0)) p.stats.highScore = sessionScore;
