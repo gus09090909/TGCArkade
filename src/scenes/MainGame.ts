@@ -808,6 +808,14 @@ export class MainGame extends Phaser.Scene {
     });
   }
 
+  /** Steel may only pierce normal destructible bricks — never gray metal, black holes, or registry-indestructible. */
+  private blockAllowsSteelPierce(bd: BlockUserData): boolean {
+    if (!bd.destroyable || bd.hp <= 0) return false;
+    const def = getBlockDef(bd.typeId);
+    if (!def.destroyable || def.grayMetalAnim || def.bhVariant) return false;
+    return def.collidable;
+  }
+
   /**
    * Original steel ball: while moving up through destroyable bricks it smashes without bouncing off
    * (see ball.js `steelMode` + block bounce). Descending hits use normal reflection.
@@ -873,7 +881,7 @@ export class MainGame extends Phaser.Scene {
 
     const body = ball.body as Phaser.Physics.Arcade.Body;
     const steel = !!ball.getData('steel');
-    if (steel && bd.destroyable && body.velocity.y < -28) {
+    if (steel && body.velocity.y < -28 && this.blockAllowsSteelPierce(bd)) {
       this.ballSteelPierceBlockHit(ball, block, bd, body, now);
       return;
     }
@@ -898,7 +906,8 @@ export class MainGame extends Phaser.Scene {
       nx = Math.sign(dx) * (pw - absX + 0.5);
       body.velocity.x *= -1;
     }
-    const push = steel ? 2.5 : 1;
+    const push =
+      steel && !bd.destroyable ? 4.5 : steel ? 2.5 : 1;
     ball.x += nx * push;
     ball.y += ny * push;
     body.updateFromGameObject();
@@ -1070,7 +1079,11 @@ export class MainGame extends Phaser.Scene {
       }
       if (touchT) {
         ball.y = r + eps;
-        body.velocity.y = Math.abs(body.velocity.y);
+        let vyOut = Math.abs(body.velocity.y);
+        if (ball.getData('steel') && vyOut < this.ballSpeedCurrent * 0.24) {
+          vyOut = this.ballSpeedCurrent * 0.24;
+        }
+        body.velocity.y = vyOut;
       }
 
       const newEdges =
@@ -1166,11 +1179,11 @@ export class MainGame extends Phaser.Scene {
     } else if (name === 'extra-life') {
       this.lives++;
     } else if (name === 'grow-paddle') {
-      this.paddleCenterMul = 1.45;
+      this.paddleCenterMul = 1.4;
       this.buildPaddle(PADDLE_Y);
       this.schedulePaddleSizeRevert(6000);
     } else if (name === 'shrink-paddle') {
-      this.paddleCenterMul = 0.7;
+      this.paddleCenterMul = 0.4;
       this.buildPaddle(PADDLE_Y);
       this.schedulePaddleSizeRevert(6000);
     } else if (name === 'score') {
