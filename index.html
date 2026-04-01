@@ -44,6 +44,8 @@
       /* In-game only: hide OS pointer over the Phaser canvas (DOM overlays keep default cursor). */
       body.tgc-playing-game #game-root canvas {
         cursor: none !important;
+        /* Restore punchy colour after removing the old full-screen fog layer (cv-front). */
+        filter: saturate(1.14) contrast(1.07) brightness(1.04);
       }
     </style>
   </head>

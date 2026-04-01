@@ -30,9 +30,10 @@ function createGame() {
       height: GAME_HEIGHT,
       expandParent: true,
     },
-    /** Default smoothing like classic CreateJS bitmaps — not pixelArt. */
+    /** roundPixels reduces sub-pixel blur when Scale.FIT upscales the canvas. */
     render: {
       antialias: true,
+      roundPixels: true,
       powerPreference: 'high-performance',
     },
     audio: {

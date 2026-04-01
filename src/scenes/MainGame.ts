@@ -185,12 +185,13 @@ export class MainGame extends Phaser.Scene {
       closeTgcOverlay();
     });
 
-    this.cameras.main.setBackgroundColor(0x0a0e1a);
+    this.cameras.main.setBackgroundColor(0x0c1222);
 
     this.add.image(0, 0, 'bg-game').setOrigin(0).setDisplaySize(GAME_WIDTH, GAME_HEIGHT).setDepth(-3);
     this.bgParallaxBack = this.add.image(0, 0, 'cv-back').setOrigin(0).setDepth(-2);
     this.bgParallaxMid = this.add.image(0, 0, 'cv-mid').setOrigin(0).setDepth(-1);
-    this.bgParallaxFront = this.add.image(0, 0, 'cv-front').setOrigin(0).setDepth(0).setAlpha(0.5);
+    /** Full-screen cv-front at 0.5 alpha read as permanent fog; keep parallax asset off during play for a crisp field. */
+    this.bgParallaxFront = this.add.image(0, 0, 'cv-front').setOrigin(0).setDepth(0).setVisible(false);
 
     if (this.textures.exists('bg-bottom')) {
       const b = this.add.image(0, GAME_HEIGHT, 'bg-bottom').setOrigin(0, 1).setDepth(1);
@@ -252,7 +253,7 @@ export class MainGame extends Phaser.Scene {
         .image(GAME_WIDTH - 40, GAME_HEIGHT - 58, 'dashboard-speed')
         .setDepth(50)
         .setScale(0.4)
-        .setAlpha(0.75);
+        .setAlpha(1);
     }
     this.sessionStartWall = Date.now();
     this.hintText = this.add
