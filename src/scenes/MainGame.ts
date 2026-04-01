@@ -4,6 +4,7 @@ import {
   fetchProfile,
   getLocalHighScore,
   getStoredUsername,
+  mergeCloudMaxLevelIntoLocal,
   pushProfile,
   sessionEnd,
   setLocalHighScore,
@@ -33,7 +34,12 @@ function eraseGoData(go: Phaser.GameObjects.GameObject, key: string): void {
   if (dm) dm.remove(key);
 }
 
-type BootData = { level?: number; resetAll?: boolean };
+type BootData = {
+  level?: number;
+  resetAll?: boolean;
+  /** Same run after clearing a stage — keep score, lives, session time, death tally. */
+  keepSessionStats?: boolean;
+};
 
 type BlockUserData = {
   placed: PlacedBlock;
@@ -102,6 +108,10 @@ export class MainGame extends Phaser.Scene {
   private levelStartMs = 0;
   private scoreAtLevelStart = 0;
   private livesAtLevelStart = 3;
+  /** Session play time at start of current stage (for cloud deltas). */
+  private playMsAtLevelStart = 0;
+  /** Lives lost this run (balls dropped), sent as deathsDelta on game over. */
+  private sessionBallsLost = 0;
   private sessionPlayMs = 0;
   /** Original bonus used ~speedStep 4 with curved path; straight drop was tuned too fast at 152. */
   private readonly bonusFallPxPerSec = 78;
@@ -119,24 +129,41 @@ export class MainGame extends Phaser.Scene {
   }
 
   create() {
+    const keepSession = this.boot.keepSessionStats === true;
+
     if (this.boot.resetAll) {
       this.score = 0;
       this.lives = 3;
       this.levelIndex = 0;
       this.maxUnlocked = 0;
       localStorage.removeItem('tgc_max_level');
+      this.sessionPlayMs = 0;
+      this.sessionBallsLost = 0;
+      this.playMsAtLevelStart = 0;
     } else if (this.boot.level !== undefined) {
       this.maxUnlocked = Math.min(
         Number(localStorage.getItem('tgc_max_level') || '0') || 0,
         SPACE_LEVEL_STRINGS.length - 1
       );
       this.levelIndex = Phaser.Math.Clamp(this.boot.level, 0, SPACE_LEVEL_STRINGS.length - 1);
+      if (!keepSession) {
+        this.score = 0;
+        this.lives = 3;
+        this.sessionPlayMs = 0;
+        this.sessionBallsLost = 0;
+        this.playMsAtLevelStart = 0;
+      }
     } else {
       this.maxUnlocked = Math.min(
         Number(localStorage.getItem('tgc_max_level') || '0') || 0,
         SPACE_LEVEL_STRINGS.length - 1
       );
       this.levelIndex = Math.min(this.maxUnlocked, SPACE_LEVEL_STRINGS.length - 1);
+      this.score = 0;
+      this.lives = 3;
+      this.sessionPlayMs = 0;
+      this.sessionBallsLost = 0;
+      this.playMsAtLevelStart = 0;
     }
     this.boot = {};
     this.pendingServeBalls.clear();
@@ -145,7 +172,6 @@ export class MainGame extends Phaser.Scene {
     this.overlayPausedPhysics = false;
     this.pauseLayer?.destroy(true);
     this.pauseLayer = undefined;
-    this.sessionPlayMs = 0;
     this.bonusIncidence = {};
     this.glue = false;
     try {
@@ -255,7 +281,9 @@ export class MainGame extends Phaser.Scene {
         .setScale(0.4)
         .setAlpha(1);
     }
-    this.sessionStartWall = Date.now();
+    this.sessionStartWall = keepSession
+      ? Date.now() - Math.floor(this.sessionPlayMs)
+      : Date.now();
     this.hintText = this.add
       .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 150, 'Tap / click — launch ball', uiStyle({
         fontSize: '20px',
@@ -1397,6 +1425,7 @@ export class MainGame extends Phaser.Scene {
   }
 
   private loseLifeOrDie() {
+    this.sessionBallsLost++;
     this.cameras.main.shake(200, 0.004);
     this.lives--;
     this.refreshHud();
@@ -1434,7 +1463,7 @@ export class MainGame extends Phaser.Scene {
         if (p === null || p === false) return;
         const levelScore = Math.max(0, this.score - this.scoreAtLevelStart);
         const timeSec = Math.max(1, Math.floor((Date.now() - this.levelStartMs) / 1000));
-        const deltaPlay = Math.floor(this.sessionPlayMs);
+        const deltaPlay = Math.max(0, Math.floor(this.sessionPlayMs - this.playMsAtLevelStart));
 
         const st = p.stats;
         const roundsWon = (st.roundsWon | 0) + 1;
@@ -1474,7 +1503,6 @@ export class MainGame extends Phaser.Scene {
 
         const put = await pushProfile(user, merged);
         if (put) {
-          this.sessionPlayMs = 0;
           void syncEvaluatedAchievementsToCloud(put, { sessionScore: this.score });
         }
       });
@@ -1497,7 +1525,11 @@ export class MainGame extends Phaser.Scene {
       .setInteractive({ useHandCursor: true })
       .setDepth(60);
     btn.on('pointerdown', () => {
-      this.scene.restart({ level: finished ? 0 : next });
+      if (finished) {
+        this.scene.restart({ level: 0 });
+      } else {
+        this.scene.restart({ level: next, keepSessionStats: true });
+      }
     });
   }
 
@@ -1509,8 +1541,14 @@ export class MainGame extends Phaser.Scene {
     if (this.score > getLocalHighScore()) setLocalHighScore(this.score);
     const user = getStoredUsername();
     if (user.length >= 2) {
-      void sessionEnd(user, this.score).then((res) => {
-        if (res?.profile) void syncEvaluatedAchievementsToCloud(res.profile, { sessionScore: this.score });
+      const cap = SPACE_LEVEL_STRINGS.length - 1;
+      const deltaPlay = Math.max(0, Math.floor(this.sessionPlayMs - this.playMsAtLevelStart));
+      const deathsDelta = Math.max(1, this.sessionBallsLost | 0);
+      void sessionEnd(user, this.score, { playTimeMsDelta: deltaPlay, deathsDelta }).then((res) => {
+        if (res?.profile) {
+          mergeCloudMaxLevelIntoLocal(res.profile.maxUnlockedLevelIndex | 0, cap);
+          void syncEvaluatedAchievementsToCloud(res.profile, { sessionScore: this.score });
+        }
       });
     }
     this.add
@@ -1616,6 +1654,7 @@ export class MainGame extends Phaser.Scene {
     this.levelStartMs = Date.now();
     this.scoreAtLevelStart = this.score;
     this.livesAtLevelStart = this.lives;
+    this.playMsAtLevelStart = this.sessionPlayMs;
     this.spawnBallAtPaddle();
     this.hintText.setVisible(true);
   }

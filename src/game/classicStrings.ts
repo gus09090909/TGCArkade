@@ -23,6 +23,7 @@ export const S = {
   logout: 'Log out',
   logoutConfirm: 'Log out of this device? You can sign in again with your player name.',
   achievementsHeading: 'Achievements',
+  achToastUnlocked: 'Achievement unlocked',
   shareBlurb: 'Come play TGC-Arkade with me!',
   copyManual: 'Copy this link:',
   lbPlayer: 'Player',

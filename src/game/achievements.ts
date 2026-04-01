@@ -1,5 +1,6 @@
 import { SPACE_LEVEL_STRINGS } from '../data/spaceLevels';
 import { getStoredUsername, pushProfile, type Profile } from '../api/tgcCloud';
+import { queueAchievementToasts } from '../ui/achievementToast';
 import { ACH_DESCS, ACH_TITLES, S } from './classicStrings';
 
 const LS = 'tgc_ach_local';
@@ -22,9 +23,9 @@ const LEVEL_COUNT = SPACE_LEVEL_STRINGS.length;
 
 function runScore(stats: Profile['stats'], ctx?: EvalCtx): number {
   const s = stats || ({} as Profile['stats']);
-  const base = Math.max(s.bestSessionScore | 0, s.highScore | 0);
+  const historic = Math.max(s.bestSessionScore | 0, s.highScore | 0);
   const cur = ctx?.sessionScore | 0;
-  return Math.max(base, cur);
+  return Math.max(historic, cur);
 }
 
 function levelBeatCheck(n: number) {
@@ -183,6 +184,23 @@ export function persistEvaluatedAchievements(added: Record<string, number>) {
   persistLocalIds(Object.keys(added));
 }
 
+function payloadsForAdded(added: Record<string, number>) {
+  const ids = Object.keys(added);
+  const out: { icon: string; label: string; title: string; description?: string }[] = [];
+  for (const id of ids) {
+    const def = ACHIEVEMENT_DEFS.find((d) => d.id === id);
+    if (!def) continue;
+    const { title, desc } = formatAchievementStrings(def);
+    out.push({
+      icon: def.icon,
+      label: S.achToastUnlocked,
+      title,
+      description: desc || undefined,
+    });
+  }
+  return out;
+}
+
 const USERNAME_RE = /^[a-zA-Z0-9 _\-áéíóúñüÁÉÍÓÚÑÜ]+$/;
 
 export function isValidCallsign(name: string): boolean {
@@ -197,5 +215,10 @@ export async function syncEvaluatedAchievementsToCloud(p: Profile, ctx?: EvalCtx
   const added = evaluateMissingAchievements(p, ctx);
   if (!Object.keys(added).length) return;
   persistEvaluatedAchievements(added);
-  await pushProfile(user, { achievements: added });
+  queueAchievementToasts(payloadsForAdded(added));
+  try {
+    await pushProfile(user, { achievements: added });
+  } catch {
+    /* offline — local unlocks already saved */
+  }
 }

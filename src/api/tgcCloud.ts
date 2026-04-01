@@ -35,6 +35,24 @@ export type SessionEndResponse = {
   leaderboardTop: { username: string; score: number; at: number }[];
 };
 
+export type SessionEndOptions = {
+  /** Add to profile playTimeMs (this run, usually the current incomplete stage). */
+  playTimeMsDelta?: number;
+  /** Add to profile deaths (e.g. balls lost this run). Default 1 if omitted. */
+  deathsDelta?: number;
+};
+
+const LS_MAX_LEVEL = 'tgc_max_level';
+
+/** Merge server max-unlocked into localStorage so progress survives refresh / new tab. */
+export function mergeCloudMaxLevelIntoLocal(maxUnlockedLevelIndex: number, levelCap: number): number {
+  const cloud = Math.min(Math.max(0, maxUnlockedLevelIndex | 0), levelCap);
+  const local = Math.min(Math.max(0, Number(localStorage.getItem(LS_MAX_LEVEL) || '0') || 0), levelCap);
+  const m = Math.max(local, cloud);
+  localStorage.setItem(LS_MAX_LEVEL, String(m));
+  return m;
+}
+
 function apiUrl(path: string): string {
   const base = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, '') ?? '';
   return `${base}${path}`;
@@ -91,11 +109,22 @@ export async function fetchLeaderboard(): Promise<LeaderboardResponse | null> {
   return res.json() as Promise<LeaderboardResponse>;
 }
 
-export async function sessionEnd(username: string, sessionScore: number): Promise<SessionEndResponse | null> {
+export async function sessionEnd(
+  username: string,
+  sessionScore: number,
+  opts?: SessionEndOptions
+): Promise<SessionEndResponse | null> {
+  const body: Record<string, unknown> = { username, sessionScore: sessionScore | 0 };
+  if (opts?.playTimeMsDelta != null && opts.playTimeMsDelta > 0) {
+    body.playTimeMsDelta = Math.min(Math.floor(opts.playTimeMsDelta), 86_400_000);
+  }
+  if (opts?.deathsDelta != null && opts.deathsDelta > 0) {
+    body.deathsDelta = Math.min(Math.floor(opts.deathsDelta), 999);
+  }
   const res = await fetch(apiUrl('/api/session-end'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ username, sessionScore: sessionScore | 0 }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) return null;
   return res.json() as Promise<SessionEndResponse>;

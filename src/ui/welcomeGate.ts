@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { register, setStoredUsername } from '../api/tgcCloud';
-import { isValidCallsign } from '../game/achievements';
+import { isValidCallsign, syncEvaluatedAchievementsToCloud } from '../game/achievements';
 import { S } from '../game/classicStrings';
 
 /**
@@ -47,6 +47,7 @@ export function runWelcomeFlow(scene: Phaser.Scene) {
         return;
       }
       setStoredUsername(name);
+      void syncEvaluatedAchievementsToCloud(profile);
       gate.classList.add('tgc-hidden');
       gate.setAttribute('aria-hidden', 'true');
       cleanup();

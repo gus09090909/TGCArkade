@@ -3,6 +3,7 @@ import {
   fetchProfile,
   getLocalHighScore,
   getStoredUsername,
+  mergeCloudMaxLevelIntoLocal,
   pushProfile,
   register,
   setStoredUsername,
@@ -166,15 +167,36 @@ export function initTgcOverlayDom() {
     const p = await fetchProfile(name);
     if (p === false) {
       msg.textContent = 'No server profile yet — press Sync now after playing.';
+      $('tgc-stat-playtime').textContent = '—';
+      $('tgc-stat-totalscore').textContent = '—';
+      $('tgc-stat-highscore').textContent = String(getLocalHighScore());
+      $('tgc-stat-deaths').textContent = '—';
+      $('tgc-stat-levels').textContent = String(
+        Math.min(
+          Math.max(0, Number(localStorage.getItem('tgc_max_level') || '0') || 0),
+          SPACE_LEVEL_STRINGS.length - 1
+        ) + 1
+      );
       renderAchievementTiles(undefined);
       return;
     }
     if (p === null) {
       msg.textContent = 'Could not reach API.';
+      $('tgc-stat-playtime').textContent = '—';
+      $('tgc-stat-totalscore').textContent = '—';
+      $('tgc-stat-highscore').textContent = String(getLocalHighScore());
+      $('tgc-stat-deaths').textContent = '—';
+      $('tgc-stat-levels').textContent = String(
+        Math.min(
+          Math.max(0, Number(localStorage.getItem('tgc_max_level') || '0') || 0),
+          SPACE_LEVEL_STRINGS.length - 1
+        ) + 1
+      );
       renderAchievementTiles(undefined);
       return;
     }
     mergeServerAchievementIds(p.achievements);
+    mergeCloudMaxLevelIntoLocal(p.maxUnlockedLevelIndex | 0, SPACE_LEVEL_STRINGS.length - 1);
     fillProfileStats(p);
     renderAchievementTiles(p.achievements);
   }
@@ -200,8 +222,11 @@ export function initTgcOverlayDom() {
     }
 
     const localMax = ctx.getMaxUnlockedLevel();
-    const ach: Record<string, number> = {};
-    for (const id of getLocalUnlockedIds()) ach[id] = Math.floor(Date.now() / 1000);
+    const now = Math.floor(Date.now() / 1000);
+    const ach: Record<string, number> = { ...(p.achievements || {}) };
+    for (const id of getLocalUnlockedIds()) {
+      if (ach[id] == null) ach[id] = now;
+    }
 
     const merged: Partial<Profile> = {
       maxUnlockedLevelIndex: Math.max(p.maxUnlockedLevelIndex | 0, localMax),
@@ -209,7 +234,7 @@ export function initTgcOverlayDom() {
         ...p.stats,
         highScore: Math.max(p.stats.highScore | 0, getLocalHighScore()),
       },
-      achievements: Object.keys(ach).length ? ach : undefined,
+      achievements: ach,
     };
 
     const put = await pushProfile(name, merged);
@@ -218,6 +243,7 @@ export function initTgcOverlayDom() {
       return;
     }
     mergeServerAchievementIds(put.achievements);
+    mergeCloudMaxLevelIntoLocal(put.maxUnlockedLevelIndex | 0, SPACE_LEVEL_STRINGS.length - 1);
     fillProfileStats(put);
     renderAchievementTiles(put.achievements);
     void syncEvaluatedAchievementsToCloud(put);

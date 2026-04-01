@@ -5,6 +5,7 @@ import { getGameOptions, setGameOptions } from '../game/gameOptions';
 import { syncBgm } from '../game/bgm';
 import { openTgcOverlay, setTgcOverlayContext } from '../ui/tgcOverlay';
 import { SPACE_LEVEL_STRINGS } from '../data/spaceLevels';
+import { fetchProfile, getStoredUsername, mergeCloudMaxLevelIntoLocal } from '../api/tgcCloud';
 
 const DASH_W = 417;
 const DASH_H = 214;
@@ -41,6 +42,16 @@ export class MenuScene extends Phaser.Scene {
       onOpen: () => {},
       onClose: () => {},
     });
+
+    const cap = SPACE_LEVEL_STRINGS.length - 1;
+    const user = getStoredUsername();
+    if (user.length >= 2) {
+      void fetchProfile(user).then((p) => {
+        if (p && typeof p === 'object' && p.maxUnlockedLevelIndex != null) {
+          mergeCloudMaxLevelIntoLocal(p.maxUnlockedLevelIndex | 0, cap);
+        }
+      });
+    }
 
     this.cameras.main.setBackgroundColor(0x0a0e1a);
     this.add.image(0, 0, 'bg-game').setOrigin(0).setDisplaySize(GAME_WIDTH, GAME_HEIGHT).setDepth(-2);

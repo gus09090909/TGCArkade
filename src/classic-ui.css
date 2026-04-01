@@ -721,3 +721,98 @@
     min-height: 48px;
   }
 }
+
+/* —— Steam-style achievement toasts (bottom-right) —— */
+#tgc-ach-toast-host {
+  position: fixed;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(14px, env(safe-area-inset-bottom));
+  z-index: 100001;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: none;
+  max-width: min(380px, calc(100vw - 20px));
+  font-family: 'VT323', system-ui, sans-serif;
+}
+
+.tgc-ach-toast {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px 12px 14px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  background: linear-gradient(135deg, rgba(16, 22, 34, 0.96) 0%, rgba(8, 11, 18, 0.98) 100%);
+  border: 1px solid rgba(90, 110, 140, 0.45);
+  border-left: 4px solid #d4af37;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6) inset, 0 12px 40px rgba(0, 0, 0, 0.55),
+    0 0 28px rgba(212, 175, 55, 0.12);
+  color: #e8edf4;
+  transform: translate3d(calc(100% + 28px), 0, 0);
+  opacity: 0;
+  transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.38s ease-out;
+}
+
+.tgc-ach-toast--in {
+  transform: translate3d(0, 0, 0);
+  opacity: 1;
+}
+
+.tgc-ach-toast--out {
+  transform: translate3d(calc(100% + 28px), 0, 0);
+  opacity: 0;
+  transition: transform 0.42s cubic-bezier(0.55, 0, 0.85, 0.45), opacity 0.35s ease-in;
+}
+
+.tgc-ach-toast__icon {
+  flex-shrink: 0;
+  font-size: 40px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+}
+
+.tgc-ach-toast__text {
+  min-width: 0;
+  flex: 1;
+}
+
+.tgc-ach-toast__label {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #b8c5d8;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.tgc-ach-toast__title {
+  font-size: 22px;
+  line-height: 1.2;
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+
+.tgc-ach-toast__desc {
+  margin-top: 6px;
+  font-size: 15px;
+  line-height: 1.25;
+  color: #9fb0c8;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tgc-ach-toast {
+    transition: none;
+  }
+  .tgc-ach-toast--out {
+    transition: none;
+  }
+}

@@ -147,6 +147,10 @@ app.post('/api/register', (req, res) => {
 app.post('/api/session-end', (req, res) => {
   const name = ((req.body && req.body.username) || '').trim();
   const sessionScore = parseInt(req.body && req.body.sessionScore, 10) || 0;
+  const playDelta = parseInt(req.body && req.body.playTimeMsDelta, 10) || 0;
+  const deathsDeltaRaw = parseInt(req.body && req.body.deathsDelta, 10);
+  const deathsDelta =
+    Number.isFinite(deathsDeltaRaw) && deathsDeltaRaw > 0 ? Math.min(deathsDeltaRaw, 999) : 1;
   if (name.length < 2) return res.status(400).json({ error: 'invalid username' });
   if (sessionScore < 0 || sessionScore > 999999999) {
     return res.status(400).json({ error: 'invalid score' });
@@ -154,7 +158,10 @@ app.post('/api/session-end', (req, res) => {
   const db = loadDb();
   const p = db.profiles[name] || defaultProfile(name);
   p.stats = p.stats || {};
-  p.stats.deaths = (p.stats.deaths | 0) + 1;
+  p.stats.deaths = (p.stats.deaths | 0) + deathsDelta;
+  if (playDelta > 0 && playDelta <= 86400000) {
+    p.stats.playTimeMs = (p.stats.playTimeMs | 0) + playDelta;
+  }
   if (sessionScore > (p.stats.bestSessionScore | 0)) p.stats.bestSessionScore = sessionScore;
   if (sessionScore > (p.stats.highScore | 0)) p.stats.highScore = sessionScore;
   p.cloudSyncedAt = Date.now();
