@@ -4,6 +4,14 @@ import { getGameOptions } from './gameOptions';
 export const TGC_BGM_REGISTRY_KEY = 'tgcBgm';
 const REG_KEY = TGC_BGM_REGISTRY_KEY;
 
+/** Stops menu music while the playfield is active (matches original CreateJS behaviour). */
+export function pauseBgmDuringGameplay(game: Phaser.Game) {
+  const bgm = game.registry.get(REG_KEY) as Phaser.Sound.BaseSound | undefined;
+  if (bgm?.isPlaying) {
+    bgm.stop();
+  }
+}
+
 /** Ensures background music exists and matches music / mute options. */
 export function syncBgm(scene: Phaser.Scene) {
   if (!scene.cache.audio.exists('s-music')) return;

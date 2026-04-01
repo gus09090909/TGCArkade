@@ -15,7 +15,7 @@ import { uiStyle } from '../game/uiFonts';
 import { blockTextureKey, getBlockDef } from '../game/blockRegistry';
 import { blockWorldRect, parseLevelString, type PlacedBlock } from '../game/parseLevel';
 import { BONUS_TYPES, bonusTextureFolder, type BonusTypeDef } from '../game/bonusesData';
-import { syncBgm } from '../game/bgm';
+import { pauseBgmDuringGameplay } from '../game/bgm';
 import { getGameOptions } from '../game/gameOptions';
 import {
   attachBallTrail,
@@ -201,7 +201,7 @@ export class MainGame extends Phaser.Scene {
       b.setDisplaySize(dw, dh);
     }
 
-    syncBgm(this);
+    pauseBgmDuringGameplay(this.game);
 
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
@@ -322,6 +322,7 @@ export class MainGame extends Phaser.Scene {
     this.input.on('pointerdown', onPointerLaunch);
     this.gameRootPointerDown = () => {
       if (!this.scene.isActive()) return;
+      this.sound.unlock();
       if (this.paddleGun && !this.pausedForUi && !this.userPaused && !this.overlayPausedPhysics) {
         this.tryFireLaser();
       }
@@ -342,9 +343,8 @@ export class MainGame extends Phaser.Scene {
 
   private playSfx(key: string) {
     if (!getGameOptions().sfxOn) return;
-    if (this.sound.get(key)) {
-      this.sound.play(key, { volume: 0.55 });
-    }
+    if (!this.cache.audio.exists(key)) return;
+    this.sound.play(key, { volume: 0.62 });
   }
 
   private formatSessionClock(ms: number) {
@@ -508,12 +508,13 @@ export class MainGame extends Phaser.Scene {
      * Narrow strip art needs a synthetic baseline so grow/shrink is visible.
      * If the PNG center is already full-width, use it as-is — `max(96, intrinsic)` made the paddle huge at mul 1.
      */
-    const centerAtMul1 =
+    const rawCenter =
       intrinsicCenterW >= 24
         ? intrinsicCenterW
         : Math.min(88, Math.max(44, intrinsicCenterW * 13));
+    const centerAtMul1 = Math.max(12, Math.round(rawCenter * 0.5));
     const rw = this.textures.getFrame('pad-right').width;
-    const cw = Phaser.Math.Clamp(Math.round(centerAtMul1 * this.paddleCenterMul), 14, 340);
+    const cw = Phaser.Math.Clamp(Math.round(centerAtMul1 * this.paddleCenterMul), 10, 200);
     const total = lw + cw + rw;
 
     /** After `scene.restart()`, references can point at destroyed objects — must rebuild or overlaps stay broken. */
@@ -588,7 +589,7 @@ export class MainGame extends Phaser.Scene {
     this.gunTimer?.remove(false);
     if (on) {
       this.gunTimer = this.time.addEvent({
-        delay: 12000,
+        delay: 6000,
         callback: () => this.setPaddleGun(false),
       });
     }
@@ -783,7 +784,7 @@ export class MainGame extends Phaser.Scene {
     prev?.remove(false);
     eraseGoData(ball, 'steelTimer');
     if (on) {
-      const ev = this.time.delayedCall(12000, () => {
+      const ev = this.time.delayedCall(6000, () => {
         if (!ball.active || !ball.body) return;
         this.setBallSteel(ball, false);
       });
@@ -997,7 +998,7 @@ export class MainGame extends Phaser.Scene {
   private startGluePowerup() {
     this.glue = true;
     this.glueExpireTimer?.remove(false);
-    this.glueExpireTimer = this.time.delayedCall(15000, () => {
+    this.glueExpireTimer = this.time.delayedCall(7500, () => {
       this.glue = false;
       this.glueExpireTimer = undefined;
     });
@@ -1167,11 +1168,11 @@ export class MainGame extends Phaser.Scene {
     } else if (name === 'grow-paddle') {
       this.paddleCenterMul = 1.45;
       this.buildPaddle(PADDLE_Y);
-      this.schedulePaddleSizeRevert(12000);
+      this.schedulePaddleSizeRevert(6000);
     } else if (name === 'shrink-paddle') {
       this.paddleCenterMul = 0.7;
       this.buildPaddle(PADDLE_Y);
-      this.schedulePaddleSizeRevert(12000);
+      this.schedulePaddleSizeRevert(6000);
     } else if (name === 'score') {
       /* score already applied via def.score */
     } else if (name === 'small-ball') {

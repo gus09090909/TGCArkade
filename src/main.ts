@@ -61,6 +61,7 @@ function boot() {
     gameRef?.sound.unlock();
     const g = gameRef;
     if (!g) return;
+    if (g.scene.isActive('MainGame')) return;
     const bgm = g.registry.get(TGC_BGM_REGISTRY_KEY) as Phaser.Sound.BaseSound | undefined;
     if (bgm && getGameOptions().musicOn && !bgm.isPlaying) {
       try {
