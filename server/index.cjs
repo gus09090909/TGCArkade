@@ -90,6 +90,18 @@ function recomputeLeaderboard(db) {
       bestByUser[u] = { username: u, score: row.score, at: row.at };
     }
   });
+  const profiles = db.profiles || {};
+  for (const p of Object.values(profiles)) {
+    if (!p || !p.username) continue;
+    const u = p.username;
+    const st = p.stats || {};
+    const fromProfile = Math.max(st.bestSessionScore | 0, st.highScore | 0);
+    if (fromProfile <= 0) continue;
+    const prev = bestByUser[u];
+    if (!prev || fromProfile > prev.score) {
+      bestByUser[u] = { username: u, score: fromProfile, at: p.cloudSyncedAt | 0 };
+    }
+  }
   return Object.values(bestByUser)
     .sort((a, b) => b.score - a.score)
     .slice(0, 200);

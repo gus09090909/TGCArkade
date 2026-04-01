@@ -6,6 +6,7 @@ import {
   mergeCloudMaxLevelIntoLocal,
   pushProfile,
   register,
+  setLocalHighScore,
   setStoredUsername,
   type Profile,
 } from '../api/tgcCloud';
@@ -234,6 +235,8 @@ export function initTgcOverlayDom() {
     mergeCloudMaxLevelIntoLocal(p.maxUnlockedLevelIndex | 0, SPACE_LEVEL_STRINGS.length - 1);
     fillProfileStats(p);
     renderAchievementTiles(p.achievements);
+    const cloudBest = Math.max(p.stats.bestSessionScore | 0, p.stats.highScore | 0);
+    if (cloudBest > getLocalHighScore()) setLocalHighScore(cloudBest);
   }
 
   async function syncNow() {
@@ -263,11 +266,13 @@ export function initTgcOverlayDom() {
       if (ach[id] == null) ach[id] = now;
     }
 
+    const localBest = getLocalHighScore();
     const merged: Partial<Profile> = {
       maxUnlockedLevelIndex: Math.max(p.maxUnlockedLevelIndex | 0, localMax),
       stats: {
         ...p.stats,
-        highScore: Math.max(p.stats.highScore | 0, getLocalHighScore()),
+        bestSessionScore: Math.max(p.stats.bestSessionScore | 0, localBest),
+        highScore: Math.max(p.stats.highScore | 0, localBest),
       },
       achievements: ach,
     };
@@ -281,6 +286,8 @@ export function initTgcOverlayDom() {
     mergeCloudMaxLevelIntoLocal(put.maxUnlockedLevelIndex | 0, SPACE_LEVEL_STRINGS.length - 1);
     fillProfileStats(put);
     renderAchievementTiles(put.achievements);
+    const putBest = Math.max(put.stats.bestSessionScore | 0, put.stats.highScore | 0);
+    if (putBest > getLocalHighScore()) setLocalHighScore(putBest);
     void syncEvaluatedAchievementsToCloud(put);
     msg.textContent = 'Synced.';
   }

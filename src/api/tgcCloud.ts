@@ -5,6 +5,20 @@
 const LS_USER = 'tgc_username';
 const LS_HIGH = 'tgc_high_score';
 
+function safeUserKeyFragment(name: string): string {
+  return name
+    .trim()
+    .replace(/[^a-zA-Z0-9 _\-áéíóúñüÁÉÍÓÚÑÜ]/g, '_')
+    .slice(0, 28);
+}
+
+/** Local best score: per callsign so multiple users on one browser never share one value. */
+function localHighStorageKey(): string {
+  const u = getStoredUsername();
+  if (u.length >= 2) return `${LS_HIGH}__${safeUserKeyFragment(u)}`;
+  return LS_HIGH;
+}
+
 export type ProfileStats = {
   playTimeMs: number;
   deaths: number;
@@ -69,11 +83,11 @@ export function setStoredUsername(name: string) {
 }
 
 export function getLocalHighScore(): number {
-  return Number(localStorage.getItem(LS_HIGH) || '0') || 0;
+  return Number(localStorage.getItem(localHighStorageKey()) || '0') || 0;
 }
 
 export function setLocalHighScore(n: number) {
-  localStorage.setItem(LS_HIGH, String(Math.max(0, n | 0)));
+  localStorage.setItem(localHighStorageKey(), String(Math.max(0, n | 0)));
 }
 
 export async function register(username: string): Promise<Profile | null> {

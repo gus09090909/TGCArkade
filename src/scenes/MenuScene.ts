@@ -5,7 +5,13 @@ import { getGameOptions, setGameOptions } from '../game/gameOptions';
 import { syncBgm } from '../game/bgm';
 import { openTgcOverlay, setTgcOverlayContext } from '../ui/tgcOverlay';
 import { SPACE_LEVEL_STRINGS } from '../data/spaceLevels';
-import { fetchProfile, getStoredUsername, mergeCloudMaxLevelIntoLocal } from '../api/tgcCloud';
+import {
+  fetchProfile,
+  getLocalHighScore,
+  getStoredUsername,
+  mergeCloudMaxLevelIntoLocal,
+  setLocalHighScore,
+} from '../api/tgcCloud';
 import { mergeServerAchievementIds } from '../game/achievements';
 
 const DASH_W = 417;
@@ -51,6 +57,8 @@ export class MenuScene extends Phaser.Scene {
         if (p && typeof p === 'object' && p.maxUnlockedLevelIndex != null) {
           mergeServerAchievementIds(p.achievements);
           mergeCloudMaxLevelIntoLocal(p.maxUnlockedLevelIndex | 0, cap);
+          const cloudBest = Math.max(p.stats?.bestSessionScore | 0, p.stats?.highScore | 0);
+          if (cloudBest > getLocalHighScore()) setLocalHighScore(cloudBest);
         }
       });
     }

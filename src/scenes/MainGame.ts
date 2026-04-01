@@ -1524,7 +1524,7 @@ export class MainGame extends Phaser.Scene {
         const maxLevelBeat = Math.max(st.maxLevelBeat | 0, beat);
         const totalScore = (st.totalScore | 0) + levelScore;
         const bestSessionScore = Math.max(st.bestSessionScore | 0, this.score);
-        const highScore = Math.max(st.highScore | 0, this.score, bestSessionScore, getLocalHighScore());
+        const highScore = Math.max(st.highScore | 0, this.score, bestSessionScore);
         let fastestRoundSec = st.fastestRoundSec | 0;
         if (!fastestRoundSec || timeSec < fastestRoundSec) fastestRoundSec = timeSec;
         let fullLivesWins = st.fullLivesWins | 0;
